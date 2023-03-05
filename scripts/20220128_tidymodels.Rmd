@@ -1,0 +1,273 @@
+---
+title: "Observe-ACS | Tidymodels"
+author: | 
+        | christoph.reich@med.uni-heidelberg.de 
+        | evangelos.giannitsis@med.uni-heidelberg.de
+        | Klinik für Kardiologie, Angiologie und Pneumologie
+        | Universitätsklinikum Heidelberg
+        | 
+date: "`r format(Sys.time(), '%d %B, %Y, %H:%M')`"
+knit: (function(input, ...) {
+    rmarkdown::render(
+      input,
+      output_file = paste0(  
+        Sys.Date(), '-',  "tidymodels", '.html'
+      ),
+      output_dir = "../output-markdown",  
+      envir = globalenv()
+    )
+  })
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    df_print: kable
+---
+
+```{r dependencies, include=FALSE}
+library(readxl)
+library(xlsx)
+library(dplyr)
+library(tidyr)
+library(forcats)  # for fct_lump
+library(stringr)
+library(ggplot2)
+library(kableExtra)
+library(tableone)
+library(skimr)
+library(mice)  # for missing data
+library(VIM)  # for missing data
+library(tidymodels)  # for modelling
+library(tictoc)
+library(pROC)
+library(glmnet)
+library(survival)
+library(survminer)
+library(ggsci)
+library(lubridate)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE)
+```
+
+
+```{r read-data, echo=FALSE}
+impdat.ml.mean.with_mort <- as_tibble(readRDS(file="data/impdat_ml_mean_with_o_mortality.rds"))
+impdat <- as_tibble(readRDS(file="data/impdat.RDS"))
+# base::source("../scripts/data_preprocessing.R")
+getwd()
+```
+
+![AG Meder](../../img/meder_presentation_heart.png)
+
+
+# Tidymodels Binary Outcome | Class Imbalance
+
+Here we use the tidymodels framework and deal with class imbalance (little no of events regarding mortality). I loaded the mice imputed data. 
+
+## Death~Age
+
+Is there a relationship between the patient’s age and death prob? 
+
+```{r eda-age}
+impdat.ml.mean.with_mort %>%
+  group_by(V_age = 10 * (V_age %/% 10)) %>%
+  summarise(
+    died = mean(as.numeric(V_o_mortality))-1  # since mortality is encoded as factor w levels 1/2
+  ) %>%
+  pivot_longer(died, names_to = "outcome", values_to = "percent") %>%
+  ggplot(aes(V_age, percent)) +
+  geom_line(alpha = 0.7, size = 1.5) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = NULL, y = "% of Patients died", color = NULL)
+```
+
+## Death ~ Age + Categorical Vars
+
+Is there a relationship between the patient’s age and death prob and **ST-Depression**? 
+
+```{r eda-1cat-vars}
+impdat.ml.mean.with_mort %>%
+  group_by(V_age = 10 * (V_age %/% 10)) %>%
+  summarise(
+    died = mean(as.numeric(V_o_mortality))-1,  # since mortality is encoded as factor w levels 1/2
+    st_depression = mean(as.numeric(V_ekg_st_senkung))-1
+  ) %>%
+  pivot_longer(died:st_depression, names_to = "outcome", values_to = "percent") %>%
+  ggplot(aes(V_age, percent, color= outcome)) +
+  geom_line(alpha = 0.7, size = 1.5) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = NULL, y = "% of Patients died", color = NULL)
+```
+
+```{r eda-death-all-binary-vars, figures-side, fig.show="hold", out.width="50%"}
+index <- c()
+for (i in seq_along(impdat.ml.mean.with_mort)) {
+  check <- (length(
+    unique(as.numeric(unlist(impdat.ml.mean.with_mort[i])))
+    ) <8
+    )  #‘<’ not meaningful for factors; 'list' object cannot be coerced to type 'double'
+  index <- append(index,check)
+}
+categorical_features <- colnames(impdat.ml.mean.with_mort)[index]
+# convert to factor
+impdat.ml.mean.with_mort[categorical_features] <- lapply(impdat.ml.mean.with_mort[categorical_features], factor)
+
+index <- c()
+for (i in seq_along(impdat.ml.mean.with_mort)) {
+  check <- (length(
+    unique(as.numeric(unlist(impdat.ml.mean.with_mort[i])))
+    ) <=2
+    )  #‘<’ not meaningful for factors; 'list' object cannot be coerced to type 'double'
+  index <- append(index,check)
+}
+binary_features <- colnames(impdat.ml.mean.with_mort)[index]
+
+library(rlang)
+for (i in (binary_features)) {
+  if (i != "V_o_mortality") {
+    impdat.ml.mean.with_mort %>%
+    group_by(V_age = 10 * (V_age %/% 10)) %>%
+    summarise(
+      died = mean(as.numeric(V_o_mortality))-1,  # since mortality is encoded as factor w levels 1/2
+      categorical_var = mean(as.numeric(.data[[i]]))-1  # access variable
+    ) %>%
+    pivot_longer(died:categorical_var, names_to = "outcome", values_to = "percent") %>%
+    ggplot(aes(V_age, percent, color= outcome)) +
+    geom_line(alpha = 0.7, size = 1.5) +
+    scale_y_continuous(labels = scales::percent_format()) +
+    labs(x = "Age", y = "% of Patients died") +
+      scale_color_discrete(name = NULL, labels = c({i}, "Died")) +
+       theme_minimal() -> age_catplot
+    print(age_catplot)
+  }
+}
+```
+
+
+Are people more likely to die who have a *Pacemaker*?
+
+```{r eda-dying-with-PM}
+impdat.ml.mean.with_mort %>%
+  count(V_ekg_schrittmacher, V_o_mortality) %>%
+  # group by variable
+  group_by(V_ekg_schrittmacher) %>%
+  mutate(percent = scales::percent(n / sum(n))) %>%
+  kable(
+    col.names = c("Pacemaker", "Died", "Number of people", "% of people"),
+    align = "llrr"
+  )
+```
+
+We can use a similar approach to see how different the rates of death are on different onsets of symptoms:
+
+```{r eda-dying-with-symptom-onset}
+impdat.ml.mean.with_mort %>%
+  mutate(V_symptombeginn = fct_lump(V_symptombeginn, prop = 0.25)) %>%  # everything with <25% goes to other category
+  count(V_symptombeginn, V_o_mortality) %>%
+  group_by(V_symptombeginn) %>%
+  mutate(percent = scales::percent(n / sum(n))) %>%  # label percentages 
+  kable(
+    col.names = c("Symptombeginn(h)", "Died", "Number of people", "% of people"),
+    align = "llrr"
+  )
+
+impdat.ml.mean.with_mort %>%
+  #mutate(V_symptombeginn = fct_lump(V_symptombeginn, prop = 0.25)) %>%  # everything with <25% goes to other category
+  count(V_symptombeginn, V_o_mortality) %>%
+  group_by(V_symptombeginn) %>%
+  mutate(percent = scales::percent(n / sum(n))) %>%  # label percentages 
+  kable(
+    col.names = c("Symptombeginn(h)", "Died", "Number of people", "% of people"),
+    align = "llrr"
+  )
+```
+
+It seems that people were more likely to die if symptom onset has been earlier. We can plot this: 
+
+Let’s make one last exploratory plot and look at seasons. How much difference is there in survival across the four seasons?
+
+```{r eda-PLOT-dying-with-symptom-onset}
+impdat.ml.mean.with_mort %>%
+  #filter(cat != "Unknown") %>%  # we just wanna have our 4 seasons
+  count(V_symptombeginn, V_o_mortality) %>%
+  group_by(V_symptombeginn) %>%
+  mutate(
+    percent = n / sum(n),
+    died = case_when(                          # !!!!!
+      V_o_mortality == "1" ~ "Died",
+      V_o_mortality == "0" ~ "Did not die"  # died was logical before
+    )
+  ) %>%
+  ggplot(aes(V_symptombeginn, percent, fill = V_symptombeginn)) +
+  geom_col(alpha = 0.8, position = "dodge", show.legend = FALSE) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  facet_wrap(~died, scales = "free") +
+  labs(x = "Symptom Onset", y = "% of Patients")
+```
+
+\clearpage
+
+# Build a model 
+
+We can start by splitting our data into training and testing sets.
+
+```{r}
+library(tidymodels)
+
+set.seed(123)
+members_split <- initial_split(impdat.ml.mean.with_mort, strata = V_o_mortality)
+members_train <- training(members_split)
+members_test <- testing(members_split)
+```
+
+We are going to use resampling to evaluate model performance, so let’s get those resampled sets ready.
+
+```{r}
+set.seed(123)
+members_folds <- vfold_cv(members_train, strata = V_o_mortality)  # also resampling stratified
+```
+
+Next we build a recipe for data preprocessing.
+
+- First, we must tell the recipe() what our model is going to be (using a formula here) and what our training data is.
+- Next, we remove the .id variable.
+- Next, we use step_other() to collapse categorical levels for peak and citizenship. Before this step, there were hundreds of values in each variable.
+- After this, we can create indicator variables for the non-numeric, categorical values, except for the outcome died which we need to keep as a factor.
+- Finally, there are many more people who did not die than who died so we will use step_smote() to balance the classes.
+
+```{r recipe}
+library(themis)  # additional for smote!!!
+
+members_rec <- recipe(V_o_mortality ~ ., data = members_train) %>%
+  #step_rm(.id) %>%
+  update_role(.id, new_role="ID") %>% 
+  # step_other(V_h_lvdys_grad) %>%  # potentially pool infrequently occurring values into an "other" category.
+  step_dummy(all_nominal_predictors(), -V_o_mortality) %>%  # create dummy vars for all factor vars
+  step_normalize(all_numeric_predictors()) %>%  # ML models train better when the data is centered & scaled
+  step_zv(all_numeric_predictors()) %>%  # Get rid of features that have zero variance
+  themis::step_smote(died)
+```
+
+```{r}
+summary(members_rec)
+```
+
+
+
+\clearpage
+
+
+# Software
+
+This analysis was carried out using the statistical software `r base::version$version.string`.
+
+Apart from R's base functionality, the following packages were used: <br/>
+
+```{r software, echo=FALSE}
+# or faster with function...
+installed.packages()[names(sessionInfo()$otherPkgs), "Version"]
+```

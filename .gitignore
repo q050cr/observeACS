@@ -1,0 +1,21 @@
+.Rproj.user
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+
+._*
+
+# dirs
+data/
+documentation/
+manuscript/
+models/
+musti-analysis/
+paper-backing/
+plots/
+reports/
+scripts_py/
+shinyapp/
+survival_spooner/
+test/
