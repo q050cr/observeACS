@@ -29,6 +29,9 @@ output:
 ```{r setup, include=FALSE, cache=TRUE}
 knitr::opts_chunk$set(
   echo = FALSE)
+
+save.FILE <- TRUE
+
 ```
 
 ```{r dependencies, include=FALSE}
@@ -63,7 +66,7 @@ mode <- function(x, na.rm = FALSE) {
 
 
 ```{r read-data, echo=FALSE}
-base::source("scripts/data_preprocessing.R")
+base::source("./scripts/data_preprocessing.R")
 ```
 
 ![AG Meder](../../img/meder_presentation_heart.png)
@@ -133,8 +136,8 @@ colNames <- names(dat.observe_numeric)[2:47]
 # drop cat cars from numerical vars
 index <- names(dat.observe_numeric) %in% catVars
 dat.observe_numeric <- dat.observe_numeric[ , !index]
-
-for(i in colNames){
+colNamesNum <- names(dat.observe_numeric)
+for(i in colNamesNum){
   plt <- ggplot(dat.observe_numeric, aes_string(x=i)) +
     geom_histogram(aes(y=..density..), 
                    colour="black", fill="white", bins = 30, na.rm=TRUE)+
@@ -373,6 +376,14 @@ complete(imputed,
   select(-c(imputed$loggedEvents$out[imputed$loggedEvents$meth == "collinear"])) %>%
   # check that no more missing vars are in the data
   select_if(~sum(is.na(.)) == 0)  -> impdat
+
+# 2023-03-26
+library(sjmisc)
+impdat.merged <-  merge_imputations(dat = dat.independent, imp = imputed)
+
+if(save.FILE == TRUE) {
+  saveRDS(object = impdat.merged, file = "./data/Rdata/impdat_merged_observe.rds")
+}
 ```
 
 

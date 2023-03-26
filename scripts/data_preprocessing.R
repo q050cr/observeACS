@@ -25,7 +25,7 @@ library(lubridate)
 pMiss <- function(x){sum(is.na(x))/length(x)*100}
 
 # import data -------------------------------------------------------------
-dat.sav <- haven::read_sav("data/Observe_ML_Brahms.sav")
+dat.sav <- haven::read_sav("./data/Observe_ML_Brahms.sav")
 
 # rename some cols with dplyr -----------------------------------------------
 dat.sav <- dat.sav %>% 
@@ -194,6 +194,18 @@ dat.independent <- dat %>%
                                                # V_ekg_schenkelblock  # only zeros
                                                )
          )
+
+dat.independent <- dat.independent %>% 
+  mutate(V_h_lvdys_grad = case_when(
+    V_h_lvdys_grad == 0 ~ "good",
+    V_h_lvdys_grad == 0.5 ~ "slightly reduced",
+    V_h_lvdys_grad == 1 ~ "slightly reduced",
+    V_h_lvdys_grad == 1.5 ~ "moderately reduced",
+    V_h_lvdys_grad == 2 ~ "moderately reduced",
+    V_h_lvdys_grad == 2.5 ~ "severely reduced",
+    V_h_lvdys_grad == 3 ~ "severely reduced"
+  )) %>% 
+  mutate(V_h_lvdys_grad = factor(V_h_lvdys_grad, levels=c("good", "slightly reduced", "moderately reduced", "severely reduced")))
 
 
 # remove data not needed for further analysis -----------------------------
