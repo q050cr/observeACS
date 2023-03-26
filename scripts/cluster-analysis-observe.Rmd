@@ -1,0 +1,256 @@
+---
+title: "Cluster Analysis in Observe-ACS"
+author: | 
+        | christoph.reich@med.uni-heidelberg.de 
+        | evangelos.giannitsis@med.uni-heidelberg.de
+        | Klinik für Kardiologie, Angiologie und Pneumologie
+        | Universitätsklinikum Heidelberg
+        | 
+date: "`r format(Sys.time(), '%d %B, %Y, %H:%M')`"
+knit: (function(input, ...) {
+    rmarkdown::render(
+      input,
+      output_file = paste0(  
+        Sys.Date(), '-',  "observeACS_analysis-clustering", '.html'
+      ),
+      output_dir = "../output-markdown",  
+      envir = globalenv()
+    )
+  })
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    df_print: kable
+---
+
+
+```{r dependencies, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(purrr)
+library(ggplot2)
+library(skimr)
+library(tableone)
+library(Hmisc)
+library(RColorBrewer)
+library(survival)
+library(survminer)
+library(lubridate)  # datetimes
+library(factoextra)  # plotting of kmeans
+
+
+theme_set(ggthemes::theme_few()) 
+
+# https://www.tidymodels.org/learn/statistics/k-means/
+# This vignette would have been better .. 
+
+  # ggthemes::theme_few()+
+  # ggthemes::scale_colour_few()
+```
+
+```{r load-dat}
+base::source("./scripts/data_preprocessing.R")
+impdat.merged <- readRDS("./data/Rdata/impdat_merged_observe.rds") %>% as_tibble()
+```
+
+
+# Cluster Analysis
+
+## Hierarchical Clustering
+
+```{r hierarchical-clustering}
+# Finding distance matrix
+distance_mat <- dist(impdat.merged, method = 'euclidean')
+
+# Fitting Hierarchical clustering Model to training dataset
+set.seed(240)  # Setting seed
+Hierar_cl <- hclust(distance_mat, method = "average")
+Hierar_cl
+
+# Plotting dendrogram
+plot(Hierar_cl)
+```
+
+## K-means-clustering
+
+```{r k-means-clustering}
+set.seed(123)
+x<- scale(impdat.merged %>% 
+            mutate(V_h_lvdys_grad = as.numeric(V_h_lvdys_grad))
+)
+
+fviz_nbclust(x, FUNcluster=kmeans, method = "wss") +
+  geom_vline(xintercept = 6, linetype = 2)
+```
+
+
+```{r k-means-clustering-for-all-6-clusterings, figures-side, fig.show='hold', out.width="33%"}
+set.seed(123)
+
+dat.with.clusters <- impdat.merged
+
+centroids<- 6
+for(i in 2:centroids) {  # create 2 to 6 clusters
+  title_plot <- paste("k = ", i)
+  kmeans_loop <- kmeans(x, centers = i, iter.max = 1000, nstart = 25)
+  
+  ### name clusters
+  ordered.index <- order(table(kmeans_loop$cluster), decreasing=TRUE)
+  for (j in 1:max(kmeans_loop$cluster)) {
+    cluster.name <- paste("Cluster ", j, sep = "")
+    #kmeans$cluster[kmeans$cluster == ordered.index[1]] <- "No CAD"
+    kmeans_loop$cluster[kmeans_loop$cluster == ordered.index[j]] <- cluster.name
+  }
+  
+  colname_cluster_n <- paste0("clusters_", i)
+  dat.with.clusters <- dat.with.clusters %>% 
+    mutate(!! colname_cluster_n := kmeans_loop$cluster)
+  
+  # plot clusters
+  print(fviz_cluster(object = kmeans_loop, data = impdat.merged %>% 
+                       mutate(V_h_lvdys_grad = as.numeric(V_h_lvdys_grad)),
+                     geom = "point", 
+                     #ellipse.type = "euclid",
+                     alpha =0.5,
+                     shape = 16,
+                     show.legend=FALSE) +
+          ggtitle(title_plot)+
+          ggthemes::theme_few()+
+          ggthemes::scale_color_few()+
+          theme(legend.title=element_blank())
+  )
+}
+
+aggregate(impdat.merged, by=list(cluster=dat.with.clusters$clusters_5), mean)
+```
+
+
+## Survival Analysis
+
+```{r}
+surv.dat <- dat.with.clusters %>% 
+  dplyr::bind_cols(dat.observe %>% select(V_rapID)) %>% 
+  relocate(V_rapID, .before = V_h_diabetes) %>% 
+  bind_cols(dat.outcome)
+
+fctrs <- c("V_h_diabetes", "V_h_hypertonie", "V_h_cholesterin","V_aktiver_raucher", 
+           "V_h_familienana", "V_h_cabg", "V_h_vessel_disease", "V_h_pci", "V_h_lvdys_grad",
+           "V_o_mortality")
+
+allvars <- c("V_h_diabetes", "V_h_hypertonie", "V_h_cholesterin","V_aktiver_raucher", 
+           "V_h_familienana", "V_h_cabg", "V_h_vessel_disease", "V_h_pci", "V_h_lvdys_grad",
+           "V_vit_rr_diast" , "V_vit_rr_syst","V_vit_herzfrequenz","V_vit_temperatur" ,"V_vit_saettigung",
+           "V_vit_atemfrequenz", "V_t0_ckdepi_value", "V_t0_krea_value","V_t0_crp_value","V_t0_leuko_value",
+           "V_t0_hst_value", "V_t0_na_value", "V_t0_k_value", "V_t0_gluc_value",  "V_t0_ck_value",
+           "V_t0_ldh_value", "V_t0_got_value", "V_t0_gpt_value", "V_t0_hb_value", "V_t0_hkt_value",
+           "V_t0_mcv_value", "V_t0_mch_value", "V_t0_mchc_value","V_t0_thrombo_value","V_t0_quick_value",
+           "V_t0_inr_value", "V_grace_score",
+           "V_o_time_mortality", "V_o_mortality" )
+
+# convert to factor
+surv.dat[fctrs] <- lapply(surv.dat[fctrs], factor)
+
+surv.dat.table1 <- surv.dat %>% 
+  # encode factors
+  mutate_at(.vars = fctrs, .funs = factor)
+```
+
+
+### Table 01
+
+We can get a better overview by creating a *TableOne*. 
+
+```{r tableone, echo=FALSE}
+t1 <- tableone::CreateTableOne(data=surv.dat %>% select(-1, -c(38:46), -c(49:59)), factorVars = fctrs)
+tableone::kableone(t1)
+```
+
+## Stratum k-means
+
+### k-means 3 centroids
+
+```{r tableone-strat-kmeans3to2, echo=FALSE}
+t2 <- CreateTableOne(data=surv.dat %>% select(-1, -38, -c(40:46), -c(49:59)), 
+                     strata = "clusters_3", 
+                     #vars = colnames(surv.dat)[-c(4,5,15,16)],
+                     factorVars = fctrs[-39])
+tableone::kableone(t2, test=TRUE)
+```
+
+
+
+### k-means 4 centroids
+
+```{r tableone-strat-kmeans3to2, echo=FALSE}
+t4 <- CreateTableOne(data=surv.dat %>% select(-1, -38, -39, -c(41:46), -c(49:59)), 
+                     strata = "clusters_4", 
+                     #vars = colnames(surv.dat)[-c(4,5,15,16)],
+                     factorVars = fctrs[-40])
+tableone::kableone(t4, test=TRUE)
+```
+
+
+
+## KM curves
+
+```{r surv-analysis-data-os-descriptive, figures-side, fig.show='hold', out.width="33%"}
+surv.dat.km <- surv.dat %>% 
+  drop_na(V_o_time_mortality) %>% 
+  mutate(V_o_time_mortality = V_o_time_mortality/360) %>% 
+  mutate(V_o_mortality = as.numeric(V_o_mortality))
+
+f1 <- survfit(Surv(V_o_time_mortality, V_o_mortality) ~ 1, data =surv.dat.km)
+
+plot(survfit(Surv(V_o_time_mortality, V_o_mortality) ~ 1, data = surv.dat.km), 
+     xlab = "Years", 
+     ylab = "Overall survival probability")
+
+tidy_surv <- broom::tidy(f1)
+ggplot(tidy_surv, aes(time, estimate))+
+  geom_line()+
+  geom_ribbon(aes(ymin=conf.low, ymax=conf.high), alpha=.25)
+
+ggsurvplot(
+  fit = f1, data = surv.dat.km,
+  xlab = "Years", 
+  ylab = "Overall survival probability")
+```
+
+
+```{r surv-analysis-plot-kmeans, figures-side, fig.show='hold', out.width="50%"}
+# reorder factors with levels / not labels!!
+#surv.dat["kmeans3centers"] <- factor(surv.dat$kmeans3centers, levels = c("No CAD", "Cluster 2", "Cluster 3")) #, labels=c("No CAD", "Cluster 2", "Cluster 3"))
+#surv.dat["kmeans3to2centers"] <- factor(surv.dat$kmeans3to2centers, levels = c("No CAD", "Cluster 2"))
+#surv.dat["kmeans6to2centers"] <- factor(surv.dat$kmeans6to2centers, levels = c("No CAD", "Cluster 2"))
+
+source("./scripts/helper/ggsurvplot_custom.R")
+
+## surv curves
+ggsurvplot(
+  fit = survfit(Surv(V_o_time_mortality, V_o_mortality)~clusters_3, data = surv.dat.km),
+  xlab = "Years", 
+  ylab = "Overall survival probability",
+  title="Kaplan Meier",
+  subtitle ="Stratified by 3 centroids",
+  legend.title="",
+  legend.labs = c("Cluster 1", "Cluster 2", "Cluster 3"),
+  pval = TRUE, risk.table = TRUE)
+
+ggsurv3 <- ggsurvplot_custom(fit_object = survfit(Surv(V_o_time_mortality, V_o_mortality)~clusters_3, data = surv.dat.km), mytitle = "Cluster Analysis - 3 unsupervised clusters", legend.title = "Clusters", myXbreaks = c(1,2), legend.labs = c("Cluster 1", "Cluster 2", "Cluster 3" ), plot_inlay = TRUE,  save=FALSE)
+
+ggsurv4 <- ggsurvplot_custom(fit_object = survfit(Surv(V_o_time_mortality, V_o_mortality)~clusters_4, data = surv.dat.km), mytitle = "Cluster Analysis - 4 unsupervised clusters", legend.title = "Clusters", myXbreaks = c(1,2), legend.labs = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4" ), plot_inlay = TRUE,  save=FALSE)
+
+ggsurv3
+ggsurv4
+```
+
+
+
+
+
