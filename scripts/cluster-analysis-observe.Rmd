@@ -29,6 +29,8 @@ output:
 ```{r dependencies, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 
+saveFILES <- FALSE
+
 library(readxl)
 library(dplyr)
 library(tidyr)
@@ -56,7 +58,9 @@ theme_set(ggthemes::theme_few())
 
 ```{r load-dat}
 base::source("./scripts/data_preprocessing.R")
-impdat.merged <- readRDS("./data/Rdata/impdat_merged_observe.rds") %>% as_tibble()
+#impdat.merged <- readRDS("./data/Rdata/impdat_merged_observe.rds") %>% as_tibble()
+
+impdat.merged <- readRDS("./data/Rdata/2023-03-26-impdat_merged_observe.rds") %>% as_tibble()  # updated to add "V_t0_hstnt_value"
 ```
 
 
@@ -82,6 +86,7 @@ plot(Hierar_cl)
 ```{r k-means-clustering}
 set.seed(123)
 x<- scale(impdat.merged %>% 
+            select(-V_rapID) %>% 
             mutate(V_h_lvdys_grad = as.numeric(V_h_lvdys_grad))
 )
 
@@ -131,15 +136,159 @@ aggregate(impdat.merged, by=list(cluster=dat.with.clusters$clusters_5), mean)
 ```
 
 
+## K-prototypes-clustering
+
+```{r prototype-clust-dat}
+# https://towardsdatascience.com/the-k-prototype-as-clustering-algorithm-for-mixed-data-type-categorical-and-numerical-fe7c50538ebb
+# https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.15.4028&rep=rep1&type=pdf
+library(clustMixType)
+set.seed(202304)
+fctrs.prototypes <- 
+           c("V_sex_f1_m0", "V_symptombeginn", "V_symptom_thoraxschmerz", "V_symptomtyp", "V_h_infarkt", "V_h_khk",
+           "V_ekg_t_negativierung","V_ekg_schrittmacher", "V_ekg_atriale_tachy", "V_ekg_block_ohne_sm", 
+           "V_ekg_st_senkung", "V_ekg_sinusrhythmus" ,"V_ekg_sinus_normal",
+           "V_h_diabetes", "V_h_hypertonie", "V_h_cholesterin","V_aktiver_raucher", 
+           "V_h_familienana", "V_h_cabg", "V_h_vessel_disease", "V_h_pci", "V_h_lvdys_grad")
+
+# prepare dat
+x.prototypes <- impdat.merged %>% 
+  select(-V_rapID) %>% 
+  mutate(across(fctrs.prototypes, as.factor)) %>% 
+  mutate(across(c(!fctrs.prototypes), ~scale(.x, center = TRUE, scale = TRUE)))
+
+# Check for the optimal number of clusters given the data
+wss<-vector()
+for (i in 2:10){ wss[i] <- sum(kproto(x.prototypes, i, verbose = FALSE)$withinss)}
+par(mfrow=c(1,1))
+plot(1:10, wss, type="b", xlab="Number of Clusters",
+     ylab="Within groups sum of squares",
+     main="Assessing the Optimal Number of Clusters with the Elbow Method",
+     pch=20, cex=2)
+```
+
+```{r run-k-prototype}
+# Set the number of clusters
+num_clusters <- 3
+
+# Run K-Prototypes clustering
+kproto_result <- kproto(x.prototypes, num_clusters, verbose = FALSE, )
+
+# Perform PCA on continuous variables
+continuous_vars <- x.prototypes[, sapply(x.prototypes, is.numeric)]
+pca_result <- prcomp(continuous_vars, scale. = TRUE)
+
+# Create a data frame with the first two PCA components
+pca_df <- data.frame(pca_result$x[, 1:2])
+colnames(pca_df) <- c("PC1", "PC2")
+
+# Add cluster assignments to the PCA data frame:
+pca_df$cluster <- as.factor(kproto_result$cluster)
+
+# Create the cluster plot
+fviz_cluster(list(data = pca_df[1:2], cluster = kproto_result$cluster),
+             geom = "point",
+             alpha=0.5,
+             shape=16,
+             show.legend=FALSE,
+             repel = TRUE,
+             show.clust.cent = FALSE) +
+  ggtitle("title")+
+  ggthemes::theme_few()+
+  ggthemes::scale_color_few()+
+  theme(legend.title = element_blank())
+```
+
+```{r k-prototypes-loop}
+
+set.seed(123)
+
+centroids <- 6
+lambda_values <- seq(0.1, 1, by = 0.1)
+
+# Perform PCA on continuous variables (plot numeric grid)
+continuous_vars <- x.prototypes[, sapply(x.prototypes, is.numeric)]
+pca_result <- prcomp(continuous_vars, scale. = TRUE)
+
+# Create a data frame with the first two PCA components
+pca_df <- data.frame(pca_result$x[, 1:2])
+colnames(pca_df) <- c("PC1", "PC2")
+  
+for(i in 2:centroids) {  # create 2 to 6 clusters
+  
+  # Initialize variables to store the results (tune lambda:  balance the importance of continuous and categorical variables)
+  best_lambda <- NULL
+  lowest_cost <- Inf
+  
+  # Run K-Prototypes clustering for each lambda value
+  for (lambda in lambda_values) {
+    kproto_result <- kproto(x= x.prototypes, k = i, lambda = lambda, verbose = FALSE)
+    
+    # Compare the total cost and update the best lambda value if necessary
+    if (kproto_result$tot.withinss < lowest_cost) {
+      lowest_cost <- kproto_result$tot.withinss
+      best_lambda <- lambda
+    }
+  }
+  
+  ### name clusters
+  ordered.index <- order(table(kproto_result$cluster), decreasing=TRUE)
+  for (j in 1:max(kproto_result$cluster)) {
+    cluster.name <- paste("Cluster ", j, sep = "")
+    #kmeans$cluster[kmeans$cluster == ordered.index[1]] <- "No CAD"
+    kproto_result$cluster[kproto_result$cluster == ordered.index[j]] <- cluster.name
+  }
+  
+  colname_cluster_n <- paste0("clusters_kprototype", i)
+  dat.with.clusters <- dat.with.clusters %>% 
+    mutate(!! colname_cluster_n := kproto_result$cluster)
+  
+  # PLOT
+  title_plot <- paste("k-Prototypes Clustering with k = ", i)
+  subtitle_plot <- bquote("Tuned " ~ lambda ~  ": " ~.(best_lambda))   # terms wrapped in .() are evaluated 
+  # Add cluster assignments to the PCA data frame:
+  pca_df$cluster <- as.factor(kproto_result$cluster)
+  
+  # Create the cluster plot
+  plot(fviz_cluster(list(data = pca_df[1:2], cluster = kproto_result$cluster),
+               geom = "point",
+               alpha=0.5,
+               shape=16,
+               show.legend=FALSE,
+               repel = TRUE,
+               show.clust.cent = FALSE) +
+    labs(title = title_plot, subtitle = subtitle_plot)+
+    ggthemes::theme_few()+
+    ggthemes::scale_color_few()+
+    theme(legend.title = element_blank())
+  )
+  
+
+}
+
+```
+
+
+
+\clearpage
+
+
 ## Survival Analysis
 
 ```{r}
 surv.dat <- dat.with.clusters %>% 
-  dplyr::bind_cols(dat.observe %>% select(V_rapID)) %>% 
-  relocate(V_rapID, .before = V_h_diabetes) %>% 
+  #dplyr::left_join(dat.observe %>% select(-V_h_lvdys_grad)) %>% 
+  #dplyr::bind_cols(dat.observe %>% select(-V_rapID)) %>% 
+  #relocate(V_rapID, .before = V_h_diabetes) %>% 
   bind_cols(dat.outcome)
 
-fctrs <- c("V_h_diabetes", "V_h_hypertonie", "V_h_cholesterin","V_aktiver_raucher", 
+# fctrs <- c("V_h_diabetes", "V_h_hypertonie", "V_h_cholesterin","V_aktiver_raucher", 
+#            "V_h_familienana", "V_h_cabg", "V_h_vessel_disease", "V_h_pci", "V_h_lvdys_grad",
+#            "V_o_mortality")
+
+fctrs <- c("V_sex_f1_m0", "V_symptombeginn", "V_symptom_thoraxschmerz", "V_symptomtyp", "V_h_infarkt", "V_h_khk",
+           "V_ekg_t_negativierung","V_ekg_schrittmacher", "V_ekg_atriale_tachy", "V_ekg_block_ohne_sm", 
+           "V_ekg_st_senkung", "V_ekg_sinusrhythmus" ,"V_ekg_sinus_normal",
+           "V_h_diabetes", "V_h_hypertonie", "V_h_cholesterin","V_aktiver_raucher", 
            "V_h_familienana", "V_h_cabg", "V_h_vessel_disease", "V_h_pci", "V_h_lvdys_grad",
            "V_o_mortality")
 
@@ -156,7 +305,7 @@ allvars <- c("V_h_diabetes", "V_h_hypertonie", "V_h_cholesterin","V_aktiver_rauc
 # convert to factor
 surv.dat[fctrs] <- lapply(surv.dat[fctrs], factor)
 
-surv.dat.table1 <- surv.dat %>% 
+surv.dat <- surv.dat %>% 
   # encode factors
   mutate_at(.vars = fctrs, .funs = factor)
 ```
@@ -167,7 +316,10 @@ surv.dat.table1 <- surv.dat %>%
 We can get a better overview by creating a *TableOne*. 
 
 ```{r tableone, echo=FALSE}
-t1 <- tableone::CreateTableOne(data=surv.dat %>% select(-1, -c(38:46), -c(49:59)), factorVars = fctrs)
+t1 <- tableone::CreateTableOne(data=surv.dat %>% select(-1, 
+                                                               -c(55:59),   # clusters
+                                                               -c(60:76)),  # outcomes
+                               factorVars = fctrs)
 tableone::kableone(t1)
 ```
 
@@ -175,11 +327,14 @@ tableone::kableone(t1)
 
 ### k-means 3 centroids
 
-```{r tableone-strat-kmeans3to2, echo=FALSE}
-t2 <- CreateTableOne(data=surv.dat %>% select(-1, -38, -c(40:46), -c(49:59)), 
+```{r tableone-strat-kmeans3, echo=FALSE}
+t2 <- CreateTableOne(data=surv.dat %>% select(-1,   # "V_rapID" 
+                                              -55,  # clusters_2
+                                              -c(57:63),  # other clusters and outcomes until overall mortality
+                                              -c(65:76)), # all other outcomes
                      strata = "clusters_3", 
                      #vars = colnames(surv.dat)[-c(4,5,15,16)],
-                     factorVars = fctrs[-39])
+                     factorVars = fctrs)
 tableone::kableone(t2, test=TRUE)
 ```
 
@@ -187,11 +342,14 @@ tableone::kableone(t2, test=TRUE)
 
 ### k-means 4 centroids
 
-```{r tableone-strat-kmeans3to2, echo=FALSE}
-t4 <- CreateTableOne(data=surv.dat %>% select(-1, -38, -39, -c(41:46), -c(49:59)), 
+```{r tableone-strat-kmeans4, echo=FALSE}
+t4 <- CreateTableOne(data=surv.dat %>% select(-1,   # "V_rapID" 
+                                              -c(55:56),  # clusters_2
+                                              -c(58:63),  # other clusters and outcomes until overall mortality
+                                              -c(65:76)), # all other outcomes
                      strata = "clusters_4", 
                      #vars = colnames(surv.dat)[-c(4,5,15,16)],
-                     factorVars = fctrs[-40])
+                     factorVars = fctrs)
 tableone::kableone(t4, test=TRUE)
 ```
 
