@@ -377,12 +377,25 @@ complete(imputed,
   # check that no more missing vars are in the data
   select_if(~sum(is.na(.)) == 0)  -> impdat
 
-# 2023-03-26
+### 2023-03-26
 library(sjmisc)
-impdat.merged <-  merge_imputations(dat = dat.independent, imp = imputed)
+impdat.merged <-  merge_imputations(dat = dat.independent, imp = imputed) #, ori=dat.independent)
+
+for(nans in 1:ncol(impdat.merged)) {
+  sum.nans <- sum(is.na(impdat.merged[nans]))
+  text <- paste0("Var ", colnames(impdat.merged[nans]), " - missing values: ", sum.nans)
+  print(text)
+}
+
+impdat.merged <- dat.independent %>% 
+  # drop all vars in original data containing missing values and then add the vars from the imputed dataset
+  dplyr::select(!all_of(colnames(impdat.merged))) %>% 
+  dplyr::bind_cols(impdat.merged) %>% 
+  select(-c(V_h_lvdysfunkt_ab_mittelgradig,V_admission_hour, V_admission_month, V_admission_week, V_admission_weekday, V_h_lvdysfunktion))
+
 
 if(save.FILE == TRUE) {
-  saveRDS(object = impdat.merged, file = "./data/Rdata/impdat_merged_observe.rds")
+  saveRDS(object = impdat.merged, file = paste0("./data/Rdata/",Sys.Date() ,"-impdat_merged_observe.rds"))
 }
 ```
 
