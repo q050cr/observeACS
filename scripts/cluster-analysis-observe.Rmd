@@ -1,5 +1,6 @@
 ---
 title: "Cluster Analysis in Observe-ACS"
+subtitle: "Subset of Clustering Variables"  # useSubsetClusterVars = TRUE
 author: | 
         | christoph.reich@med.uni-heidelberg.de 
         | evangelos.giannitsis@med.uni-heidelberg.de
@@ -34,7 +35,7 @@ knitr::opts_chunk$set(echo = FALSE,
                       fig.path = "../output-markdown/figures/",  # still a rmd relative file structure here
                       dev = "svg")
 
-
+useSubsetClusterVars <- TRUE
 saveFILES <- FALSE
 
 library(readxl)
@@ -53,7 +54,6 @@ library(survival)
 library(survminer)
 library(lubridate)  # datetimes
 library(factoextra)  # plotting of kmeans
-
 
 theme_set(ggthemes::theme_few()) 
 
@@ -102,10 +102,31 @@ plot(Hierar_cl)
 
 ```{r k-means-clustering}
 set.seed(123)
-x<- scale(impdat.merged %>% 
+
+if(useSubsetClusterVars == TRUE) {
+  x <- scale(impdat.merged %>% 
+               mutate(V_h_lvdys_grad = as.numeric(V_h_lvdys_grad)) %>% 
+               select(V_age, V_sex_f1_m0, V_grace_score, 
+                      # risk, abnormal LV?
+                      V_h_diabetes, V_h_lvdys_grad, V_ekg_sinus_normal, 
+                      # history CAD/MI/PCI/CABG ANY
+                      V_h_khk, # hier enthalten, geprüft
+                      # CKD?
+                      V_t0_krea_value, V_t0_hst_value,
+                      # trop
+                      V_t0_hstnt_value, V_delta_c_first_tnt_relativ, 
+                      # inflammation
+                      V_t0_crp_value, V_vit_temperatur,
+                      # Hb
+                      V_t0_hb_value)
+  )
+} else {
+  x<- scale(impdat.merged %>% 
             select(-V_rapID) %>% 
             mutate(V_h_lvdys_grad = as.numeric(V_h_lvdys_grad))
-)
+  )
+}
+
 
 fviz_nbclust(x, FUNcluster=kmeans, method = "wss") +
   geom_vline(xintercept = 6, linetype = 2)
@@ -178,6 +199,24 @@ x.prototypes <- impdat.merged %>%
   select(-V_rapID) %>% 
   mutate(across(fctrs.prototypes, as.factor)) %>% 
   mutate(across(c(!fctrs.prototypes), ~scale(.x, center = TRUE, scale = TRUE)))
+
+
+if(useSubsetClusterVars == TRUE) {
+  x.prototypes <- x.prototypes %>% 
+               select(V_age, V_sex_f1_m0, V_grace_score, 
+                      # risk, abnormal LV?
+                      V_h_diabetes, V_h_lvdys_grad, V_ekg_sinus_normal, 
+                      # history CAD/MI/PCI/CABG ANY
+                      V_h_khk, # hier enthalten, geprüft
+                      # CKD?
+                      V_t0_krea_value, V_t0_hst_value,
+                      # trop
+                      V_t0_hstnt_value, V_delta_c_first_tnt_relativ, 
+                      # inflammation
+                      V_t0_crp_value, V_vit_temperatur,
+                      # Hb
+                      V_t0_hb_value)
+} 
 
 # Check for the optimal number of clusters given the data
 wss<-vector()
@@ -293,6 +332,8 @@ DBSCAN (Density-Based Spatial Clustering of Applications with Noise) is a densit
 A popular distance metric for mixed data types is the Gower distance. We can calculate the Gower distance using the cluster package and then apply DBSCAN using the fpc package.
 
 ```{r}
+# did not use smaller subset of variables here... 
+
 library(cluster)
 library(fpc)
 library(dbscan)
