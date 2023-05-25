@@ -268,6 +268,13 @@ pMiss_observe <- apply(dat.observe,2,pMiss)
 index <- pMiss_observe > 30
 ```
 
+
+```{r savecleandata}
+if (save.FILE == TRUE) {
+  saveRDS(object = dat.observe, file = "./output/Rdata/cleaned-dat/datobserve.rds")
+}
+```
+
 Now we continue and drop cols with missing > 30% data (containing at least 70%; done in `data_preprocessing.R`
 and stored in `dat`). Those are the following cols (n=`r sum(index)`): <br/>
 

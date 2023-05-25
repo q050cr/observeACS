@@ -10,8 +10,10 @@
 data/
 documentation/
 manuscript/
+meetings/
 models/
 musti-analysis/
+output/
 output-markdown/
 paper-backing/
 plots/
