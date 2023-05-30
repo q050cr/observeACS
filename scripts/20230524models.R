@@ -1,7 +1,9 @@
 
+# used older data from EG
+# new script uses data from 2023 from MY
+
 ### INFO ----------------------------------------------------------------------
 # this script is sourced from `scripts/render_param_reports.R`
-
 # scripts saves tuned models (not finalized) to: "./output/tuning_results/"
 
 # dependencies ---------------------------------------------------------------
@@ -62,15 +64,6 @@ model_data1 <- readRDS(file = './output/Rdata/cleaned-dat/datobserve.rds') %>%
       "V_t0_ldh_value", "V_t0_got_value", "V_t0_gpt_value", "V_t0_hb_value", 
       "V_t0_hkt_value", "V_t0_thrombo_value", "V_t0_quick_value", "V_t0_inr_value"
       )
-  ) %>% 
-  mutate(
-    V_h_lvdys_grad = case_when(
-      V_h_lvdys_grad == 0 ~ "good",
-      V_h_lvdys_grad == 0.5 |  V_h_lvdys_grad == 1 ~ "slightly reduced",
-      V_h_lvdys_grad == 1.5 |  V_h_lvdys_grad == 2 ~ "moderately reduced",
-      V_h_lvdys_grad == 2.5 |  V_h_lvdys_grad == 3 ~ "severely reduced",
-      .default = NA
-    )
   )
 
 fctrs <- c("V_o_mortality", "V_sex_f1_m0", "V_symptombeginn", "V_crowding_low0_norm1_high2",
@@ -103,7 +96,7 @@ dat_train <- training(dat_split)
 dat_test <- testing(dat_split)
   
 folds <- 
-  vfold_cv(dat_train, strata = V_o_mortality, v = 5)
+  vfold_cv(dat_train, strata = V_o_mortality, v = 10)
   
 ###
 # recipe -------------------------------------------------
@@ -205,7 +198,7 @@ boost_tree_xgboost_spec <-  # https://parsnip.tidymodels.org/reference/details_b
 mlp_nnet_spec <-
   mlp(hidden_units = tune(), penalty = tune(), 
       epochs = tune()) %>%
-  set_engine('keras') %>%  #`nnet`
+  set_engine('nnet') %>%  #`nnet`, `keras` does not easily run on M1 Mac
   set_mode('classification')
   
 ##
@@ -289,6 +282,7 @@ grid_SVM_linear <- svm_linear_kernlab_spec %>%   # 2 hyperparams
   
 grid_neural_network <- mlp_nnet_spec %>%   # 3 hyperparams
   extract_parameter_set_dials() %>% 
+  update(epochs = epochs() %>% range_set(c(10, 100))) %>%   # epochs()  Range: [10, 1000] (default)
   grid_latin_hypercube(size=100)
   
 grid_full_quad_logistic_reg <- logistic_reg_glmnet_spec %>%  # 2 hyperparams
@@ -450,9 +444,9 @@ time2 <- Sys.time()
 time.diff.race <- time2-time1
   
 ## SAVE RACE RESULTS -----------------------------------------
-filename_tune_race_results <- paste0("output/tuning_results/", Sys.Date(), "_tune_race_results.rds")
+filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results.rds")
 saveRDS(object = race_results, file = filename_tune_race_results)
-  
+
 num_race_models <- sum(collect_metrics(race_results)$n)
   
 # PLOT results ----------------------------------------------
@@ -464,7 +458,7 @@ race_results %>%
 top2models_race <- rankings_race$model[1:2]
 for (j in 1:length(all_workflows$info)) {
   if (all_workflows$info[[j]]$model == top2models_race[1]) {
-    topmodel1_race <- all_workflows$wflow_id[i]
+    topmodel1_race <- all_workflows$wflow_id[j]
   }
   
   if (all_workflows$info[[j]]$model == top2models_race[2]) {
