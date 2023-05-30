@@ -1,0 +1,629 @@
+---
+title: "Observe-ACS | May, 2023"
+author: | 
+        | christoph.reich@med.uni-heidelberg.de 
+        | mustafa.yildirim@med.uni-heidelberg.de
+        | evangelos.giannitsis@med.uni-heidelberg.de
+        | Klinik für Kardiologie, Angiologie und Pneumologie
+        | Universitätsklinikum Heidelberg
+        | 
+date: "`r format(Sys.time(), '%d %B, %Y, %H:%M')`"
+knit: (function(input, ...) {
+    rmarkdown::render(
+      input,
+      output_file = paste0(  
+        Sys.Date(), '-',  "observeACS_analysis", '.html'
+      ),
+      output_dir = "./output-markdown",  
+      envir = globalenv(), 
+      knit_root_dir = "../"
+    )
+  })
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    df_print: kable
+---
+
+
+```{r setup, include=FALSE, cache=TRUE}
+knitr::opts_chunk$set(echo = FALSE)
+#knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+save.FILE <- TRUE
+```
+
+```{r dependencies, include=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(tableone)
+library(skimr)
+library(mice)  # for missing data
+library(VIM)  # for missing data
+library(caret)  # for modelling
+library(tidymodels)
+library(tictoc)
+library(pROC)
+library(glmnet)
+library(survival)
+library(survminer)
+library(ggsci)
+library(lubridate)
+library(kableExtra)
+
+# define mode function (will be needed later)  !!!
+mode <- function(x, na.rm = FALSE) {
+  if(na.rm){
+    x = x[!is.na(x)]
+  }
+
+  ux <- unique(x)
+  return(ux[which.max(tabulate(match(x, ux)))])
+}
+```
+
+
+```{r read-data, echo=FALSE, warning=FALSE, message=FALSE}
+base::source("./scripts/data_preprocessing1.R")
+```
+
+![AG Meder](../../img/meder_presentation_heart.png)
+
+# Data description
+
+The data set consists of `r nrow(dat.observe)` patients. There are `r ncol(dat.observe)` variables in our data set.
+`r round(100*(sum(is.na(dat.observe)) / ncol(dat.observe) / nrow(dat.observe)), 1)`\% of the 
+values are missing.
+
+# Demographics
+
+## EDA 
+
+First we want to describe our *ObserveACS*-cohort and get an impression of the variable's distribution: 
+
+```{r EDA, echo=FALSE}
+# skim
+skimr::skim(data=dat.observe)
+
+# vector of nonnormal vars
+## nonnormal <-  c("ntproBNP", "Trop", "Kreatinin", "Triglycerides", "LGE")
+```
+
+
+### inspect some distributions
+
+* age
+
+```{r inspect-age-distr, echo=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+ggplot2::ggplot(data=dat.observe, aes(x=age))+
+  geom_histogram(colour="black", fill="white", bins = 30)+
+  xlab("Age")+
+  ylab("Count")+
+  theme_bw()
+
+ggplot2::ggplot(data=dat.observe, aes(x=age))+
+  geom_histogram(aes(y=..density..), colour="black", fill="white", bins = 30)+
+    geom_density(alpha=0.2, fill="#FF6666")+
+  xlab("Age")+
+  ylab("Density")+
+  theme_bw()
+```
+
+* copeptin
+
+```{r inspect-copeptin-distr, echo=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+ggplot2::ggplot(data=dat.observe, aes(x=COPEPTIN_COMBINED))+
+  geom_histogram(colour="black", fill="white", bins = 30, na.rm = TRUE)+
+  xlab("Copeptin")+
+  ylab("Count")+
+  theme_bw()
+
+ggplot2::ggplot(data=dat.observe, aes(x=COPEPTIN_COMBINED))+
+  geom_histogram(aes(y=..density..), colour="black", fill="white", bins = 30, na.rm=TRUE)+
+  geom_density(alpha=0.2, fill="#FF6666", na.rm=TRUE)+
+  xlab("Copeptin")+
+  ylab("Density")+
+  theme_bw()
+```
+
+### inspect all numeric vars' distributions
+
+```{r loop-numeric-cols-for-distr, echo=FALSE, fig.show="hold", out.width="50%"}
+colNames <- names(dat.observe_numeric)[2:47]
+
+# drop cat cars from numerical vars
+index <- names(dat.observe_numeric) %in% catVars
+dat.observe_numeric <- dat.observe_numeric[ , !index]
+colNamesNum <- names(dat.observe_numeric)[2:47]
+for(i in colNamesNum){
+  plt <- ggplot(dat.observe_numeric, aes_string(x=i)) +
+    geom_histogram(aes(y=..density..), 
+                   colour="black", fill="white", bins = 30, na.rm=TRUE)+
+    geom_density(alpha=0.2, fill="#FF6666", na.rm = TRUE)+
+    xlab(i)+
+    ylab("Density")+
+    theme_bw()
+  print(plt)
+  # Sys.sleep(2) # time to inspect plot
+}
+```
+
+We can clearly observe that not all vars follow a Gaussian distribution. We might
+consider this in our descriptive stats. So we create a vector ob clearly non-normal
+features: 
+
+```{r nonnormality-check-for-descriptive-stats, echo=FALSE}
+# vector of nonnormal vars
+#sunonnormal <-  c("ntproBNP", "Trop", "Kreatinin", "Triglycerides", "LGE")
+
+```
+
+\clearpage
+
+# Missing values
+
+## Inspect missing values
+
+Here we inspect missing values. Later we deal with missing values with the `MICE` approach. First we calculate which cols are missing more than 30% data: 
+
+```{r investigate-NA, echo=FALSE}
+# show vals that have > 30% missing data
+pMiss_observe <- apply(dat.observe,2,pMiss)
+index <- pMiss_observe > 30
+round(pMiss_observe[index], 2)
+```
+
+We can conclude that some vals are just missing because they were not existing (e.g., `ekg_st_hebung`,
+`o_stroke`, `o_time_stroke`, ...). Therefore, we go on and add `0` for some vars
+where we can be quite sure (done in script **data_preprocessing.R** and stored in `dat`).
+
+
+## Plot missing data
+
+```{r plot-missing-NA, echo=FALSE}
+# md.pattern(dat.observe, plot=FALSE)
+
+dat.observe_numeric %>% select(-rapID) %>% 
+  select(1:10) %>% 
+  mice::md.pattern(.)
+
+aggr_plot_demo <- VIM::aggr(dat.observe[demographics_cat], 
+                           col=c('navyblue','red'), 
+                           numbers=TRUE, 
+                           sortVars=TRUE, 
+                           labels=substring(names(dat.observe[demographics_cat]), 5),
+                           cex.axis=.7, gap=3, 
+                           ylab=c("Histogram of missing data","Pattern"),
+                           combined=FALSE
+)
+
+aggr_plot_ecg <- VIM::aggr(dat.observe[ecg_cat], 
+                       col=c('navyblue','red'), 
+                       numbers=TRUE, 
+                       sortVars=TRUE, 
+                       labels=substring(names(dat.observe[ecg_cat]), 7),
+                       cex.axis=.7, gap=3, 
+                       ylab=c("Histogram of missing data","Pattern"),
+                       combined=FALSE
+)
+
+aggr_plot_outcomes <- VIM::aggr(dat.observe[outcomes_cat], 
+                           col=c('navyblue','red'), 
+                           numbers=TRUE, 
+                           sortVars=TRUE, 
+                           labels=substring(names(dat.observe[outcomes_cat]), 2),
+                           cex.axis=.7, gap=3, 
+                           ylab=c("Histogram of missing data","Pattern"),
+                           combined=FALSE
+)
+
+aggr_plot_scores <- VIM::aggr(dat.observe[scores_cat], 
+                                col=c('navyblue','red'), 
+                                numbers=TRUE, 
+                                sortVars=TRUE, 
+                                labels=substring(names(dat.observe[scores_cat]), 10),
+                                cex.axis=.7, gap=3, 
+                                ylab=c("Histogram of missing data","Pattern"),
+                                combined=FALSE
+)
+
+```
+
+
+We dropped cols missing more >50% data in our preprocessing script. 
+
+
+Now we continue and drop cols with missing > 50% data (containing at least 50%; done in `data_preprocessing1.R`
+and stored in `dat`). Those are the following cols (n=`r sum(index)`): <br/>
+
+`r kableExtra::kable(names(pMiss_observe[index]))`
+
+
+
+
+# Data description after NA edit
+
+The data set consists of `r nrow(dat)` patients. 
+After removing variables with too many missing values, 
+`r ncol(dat)` variables remain in the data set.
+Now, `r round(100*(sum(is.na(dat)) / ncol(dat) / nrow(dat)), 1)`\% of the 
+values are missing.
+
+
+# Modelling
+
+## Prepare data
+
+```{r, prep-data}
+model_data1 <- dat %>% 
+  select(
+    # ID
+    rapID,
+    # outcome
+    o_mortality, 
+    # predictors
+    c("age", "sex_f1_m0", "symptombeginn", "grace_score",
+      "h_diabetes", "h_hypertonie", "h_cholesterin", "aktiver_raucher", 
+      "h_familienana", "h_khk", "h_lvdys_grad", "vit_rr_syst", "vit_herzfrequenz", "vit_temperatur", 
+      "vit_saettigung", "vit_atemfrequenz", "ekg_sinus_normal", "ekg_st_senkung", "ekg_schrittmacher", 
+      # labs
+      "t0_hstnt_value", "delta_t_first", "t0_ntbnp_value", 
+      "t0_krea_value", "t0_crp_value", "t0_leuko_value", "t0_hst_value", 
+      "t0_na_value", "t0_k_value", "t0_gluc_value", "t0_ck_value", 
+      "t0_ldh_value", "t0_got_value", "t0_gpt_value", "t0_hb_value", 
+      "t0_hkt_value", "t0_thrombo_value", "t0_quick_value", "t0_inr_value"
+    )
+  )
+
+fctrs <- c("o_mortality", "sex_f1_m0", "symptombeginn", 
+           "h_diabetes", "h_hypertonie", "h_cholesterin", "aktiver_raucher", 
+           "h_familienana", "h_khk", "h_lvdys_grad",
+           "ekg_sinus_normal", "ekg_st_senkung", "ekg_schrittmacher")
+
+model_data1 <- model_data1 %>% 
+  mutate(across(all_of(fctrs), as.factor)) %>% 
+  mutate(o_mortality = factor(o_mortality, labels = c("survived", "died")))
+
+pMiss <- function(x){sum(is.na(x))/length(x)*100}
+pMiss_observe <- apply(model_data1,2,pMiss)
+index <- pMiss_observe > 50  # no column missing more than 50% (ntproBNP > 40%, that is why threshold was set higher)
+# drop cols with more than 40% missings
+## check implausible data ----
+model_data1 <- model_data1[ , !index] %>% 
+  mutate(vit_saettigung = ifelse(vit_saettigung > 80, vit_saettigung, NaN),
+         vit_atemfrequenz = ifelse(vit_atemfrequenz<50, vit_atemfrequenz, NaN),
+         t0_k_value = ifelse(t0_k_value <7.55,t0_k_value, NaN ))
+
+saveRDS(object = model_data1, file = paste0("./output/Rdata/cleaned-dat/", Sys.Date(), "-model_data1_observe2023.rds"))
+```
+
+
+```{r source-modelling-script, message=FALSE}
+# outsourced to "20230524models-new.R", change run_model in script to run models, otherwise tuned model is loaded
+base::source("./scripts/20230524models-new.R")
+```
+
+
+## Plot tuning results
+
+```{r plot-race-results-topmodels1-2}
+# PLOT results ----------------------------------------------
+race_results %>% 
+  rank_results() %>% 
+  filter(.metric == "roc_auc") %>% 
+  select(model, .config, roc_auc=mean, rank) -> rankings_race
+
+top2models_race <- rankings_race$model[1:2]
+for (j in 1:length(all_workflows$info)) {
+  if (all_workflows$info[[j]]$model == top2models_race[1]) {
+    topmodel1_race <- all_workflows$wflow_id[j]
+  }
+  
+  if (all_workflows$info[[j]]$model == top2models_race[2]) {
+    topmodel2_race <- all_workflows$wflow_id[j]
+  }
+}
+
+autoplot(
+  race_results,
+  rank_metric = "roc_auc",  # <- how to order models
+  metric = "roc_auc",       # <- which metric to visualize
+  select_best = TRUE     # <- one point per workflow
+) +
+  geom_text(aes(y = mean - 0.05, label = wflow_id), angle = 45, hjust = 1, size =3) +
+  lims(y = c(0.6, 1.0)) +
+  ylab("ROC-AUC")+
+  labs(title="TITLE Placeholder",
+       subtitle= paste0("Racing approach | n_grids evaluated: ", num_race_models))+
+  ggthemes::theme_few()+
+  theme(legend.position = "none") -> plot_tune_race_ranking
+
+filename_plot_tune_race_ranking <- paste0("output/plots/tune_grid/", Sys.Date(), "_tune_race_ranking.svg")
+ggsave(filename = filename_plot_tune_race_ranking, plot = plot_tune_race_ranking, 
+       width = 14, height = 10, 
+       units = "in"  # default
+)
+
+if( topmodel1_race != "KNN" &  topmodel1_race != "full_quad_KNN" ) {
+  #       Error in `geom_point()`:
+  #         ! Problem while computing aesthetics.
+  #       ℹ Error occurred in the 1st layer.
+  #       Caused by error in `FUN()`:
+  #         ! Objekt 'resamples' nicht gefunden
+  # inspect hyperparameter results for specific model
+  autoplot(race_results, id = topmodel1_race, metric = "roc_auc")+
+    ylab("ROC-AUC")+
+    labs(title=paste0("Hyperparameter Performance | Racing Approach:"),
+         subtitle = paste0("MODEL: ", stringr::str_to_upper(topmodel1_race))) +
+    ggthemes::theme_few() -> plot_tune_race_hyperpars_topmodel1
+  
+  filename_plot_tune_race_hyperpars_topmodel1 <- paste0("output/plots/tune_grid/", Sys.Date(), "_tune_race_hyperpars_topmodel1.svg")
+  ggsave(filename = filename_plot_tune_race_hyperpars_topmodel1, plot = plot_tune_race_hyperpars_topmodel1, 
+         width = 14, height = 10, 
+         units = "in"  # default
+  )
+}
+
+if( topmodel2_race != "KNN" &  topmodel2_race != "full_quad_KNN" ) {
+  autoplot(race_results, id = topmodel2_race, metric = "roc_auc")+
+    ylab("ROC-AUC")+
+    labs(title=paste0("Hyperparameter Performance | Racing Approach:"),
+         subtitle = paste0("MODEL: ", stringr::str_to_upper(topmodel2_race))) +
+    ggthemes::theme_few() -> plot_tune_race_hyperpars_topmodel2
+  
+  filename_plot_tune_race_hyperpars_topmodel2 <- paste0("output/plots/tune_grid/", Sys.Date(), "_tune_race_hyperpars_topmodel2.svg")
+  ggsave(filename = filename_plot_tune_race_hyperpars_topmodel2, plot = plot_tune_race_hyperpars_topmodel2, 
+         width = 14, height = 10, 
+         units = "in"  # default
+  )
+}
+```
+
+
+## Metrics on Test Set | All models
+
+```{r loop, fig.show="hold", out.width="50%", warning=FALSE, message=FALSE}
+best_results <- list()  # hyperparams selected
+test_results <- list()  # last fit
+
+aucs <- c()
+ci.auc.texts <- c()
+accuracies <- c()
+sensitiv <- c()
+specific <- c()
+ppv <- c()
+npv <- c()
+precision <- c()
+recall <- c()
+f1 <- c()
+
+accuracies_sens09 <- c()
+sensitiv_sens09 <- c()
+specific_sens09 <- c()
+ppv_sens09 <- c()
+npv_sens09 <- c()
+precision_sens09 <- c()
+recall_sens09 <- c()
+f1_sens09 <- c()
+
+accuracies_youden <- c()
+sensitiv_youden <- c()
+specific_youden <- c()
+ppv_youden <- c()
+npv_youden <- c()
+precision_youden <- c()
+recall_youden <- c()
+f1_youden <- c()
+
+conf_mat_list <- list()
+predictions_loop <- list()
+caret_conf_mat <- list()
+caret_conf_mat_sens09 <- list()
+caret_conf_mat_youden <- list()
+coefficients_loop <- list()
+
+for (models in 1:nrow(race_results) ) {
+  ## retrieve ID
+  wflow_id <- race_results[[1]][models]  # wflow_id column
+  # select best hyperparams
+  best_results[[models]] <- 
+     race_results %>% 
+     extract_workflow_set_result(wflow_id) %>% 
+     select_best(metric = "roc_auc")
+  # fit to training data, and calculate on test data
+  test_results[[models]] <- 
+     race_results %>% 
+     extract_workflow(wflow_id) %>% 
+     finalize_workflow(best_results[[models]]) %>% 
+     last_fit(split = dat_split)
+  
+  last_fit_metrics <- collect_metrics(test_results[[models]])
+    # extract model
+  last_fit_model <- extract_workflow(test_results[[models]])
+  
+  if(save.FILE==TRUE) {
+    ## 1) STORE TEST_SET_RESULTS -----------
+    testresults_save <- paste0(format(Sys.Date(), "%Y%m%d"),  "_TEST_RESULTS_", wflow_id)
+    filename.testresults <- paste0("./output/test_set_results/", testresults_save, ".rds")
+    saveRDS(test_results[[models]], file = filename.testresults)
+    
+    ## 2) STORE MODEL ### ------------------
+    ## VETIVER MODEL DEPLOYMENT
+    modelname <- paste0(format(Sys.Date(), "%Y%m%d"),  "_MODEL_", wflow_id)
+    filename.model.vetiver <- paste0("./output/models/vetiver/", modelname, ".rds")
+    filename.model.tidymodels <- paste0("./output/models/tidymodels/", modelname, ".rds")
+    v <- vetiver_model(
+      model = last_fit_model, 
+      model_name = modelname, 
+      metadata = list(metrics = last_fit_metrics %>% select(-.config))
+    )
+    saveRDS(v, file = filename.model.vetiver)
+    saveRDS(last_fit_model, file = filename.model.tidymodels)
+  }
+  
+  ###
+  aucs <- append(aucs, collect_metrics(test_results[[models]])[[3]][2])
+  accuracies <- append(accuracies, collect_metrics(test_results[[models]])[[3]][1])
+  
+  predictions_loop[[models]] <- test_results[[models]] %>%
+    collect_predictions() 
+  
+  # CARET CONF MATRIX - original model cutoff ----
+  caret_conf_mat[[models]] <-  caret::confusionMatrix(predictions_loop[[models]]$.pred_class,                                                 predictions_loop[[models]]$o_mortality, 
+                                                 positive = "died")
+  # print(caret_conf_mat[[models]])
+  #accuracies <- append(accuracies, caret_conf_mat[[models]]$overall[[1]])
+  sensitiv <- append(sensitiv, caret_conf_mat[[models]][[4]][1])
+  specific <- append(specific, caret_conf_mat[[models]][[4]][2])
+  ppv <- append(ppv, caret_conf_mat[[models]][[4]][3])
+  npv <- append(npv, caret_conf_mat[[models]][[4]][4])
+  precision <- append(precision, caret_conf_mat[[models]][[4]][5])
+  recall <- append(recall, caret_conf_mat[[models]][[4]][6])
+  f1 <- append(f1, caret_conf_mat[[models]][[4]][7])
+  
+  ### --> get optimal threshold (YOUDEN INDEX) & extract CI AUC
+  my_roc <- pROC::roc(predictions_loop[[models]]$o_mortality, predictions_loop[[models]][[".pred_died"]])
+  youden.threshold <- pROC::coords(my_roc, x="best", best.method="youden", ret = "threshold")[[1]]
+  # Let's aim for a sensitivity of 0.90
+  target_sensitivity <- 0.90
+  # Find the threshold that gives you the desired sensitivity
+  coords <- pROC::coords(my_roc, x = target_sensitivity, input = "sensitivity", ret = "threshold", transpose = FALSE)
+  ci.auc <- ci.auc(my_roc)
+  ci.auc.text <- paste("AUC CI: ", round(ci.auc[1],2), "-",round(ci.auc[3],2), " DeLong" , sep = "")
+  ci.auc.texts <- append(ci.auc.texts, paste("AUC CI: ", round(ci.auc[1],2), "-",round(ci.auc[3],2), " DeLong" , sep = ""))
+  
+  ## threshold for spec & sens  -------------
+  predictions_loop[[models]] <- predictions_loop[[models]] %>% 
+     mutate(.pred_class_youden = ifelse(.pred_died <= youden.threshold, "survived", "died"),
+            .pred_class_youden = factor(.pred_class_youden, levels = levels(predictions_loop[[models]]$o_mortality))
+     )
+    predictions_loop[[models]][".pred_class_sens09"] <-  ifelse(predictions_loop[[models]][[".pred_died"]] > coords[[1]], "died", "survived")
+  predictions_loop[[models]] <- predictions_loop[[models]] %>% 
+    mutate(.pred_class_sens09 = factor(.pred_class_sens09, levels = levels(predictions_loop[[models]]$o_mortality)) )
+  
+  # CARET CONF MATRIX - sens optimized ----
+  caret_conf_mat_sens09[[models]] <-  caret::confusionMatrix(predictions_loop[[models]]$.pred_class_sens09,                                                 predictions_loop[[models]]$o_mortality, 
+                                                 positive = "died")
+  # print(caret_conf_mat_sens09[[models]])
+  accuracies_sens09 <- append(accuracies_sens09, caret_conf_mat_sens09[[models]]$overall[[1]])
+  sensitiv_sens09 <- append(sensitiv_sens09, caret_conf_mat_sens09[[models]][[4]][1])
+  specific_sens09 <- append(specific_sens09, caret_conf_mat_sens09[[models]][[4]][2])
+  ppv_sens09 <- append(ppv_sens09, caret_conf_mat_sens09[[models]][[4]][3])
+  npv_sens09 <- append(npv_sens09, caret_conf_mat_sens09[[models]][[4]][4])
+  precision_sens09 <- append(precision_sens09, caret_conf_mat_sens09[[models]][[4]][5])
+  recall_sens09 <- append(recall_sens09, caret_conf_mat_sens09[[models]][[4]][6])
+  f1_sens09 <- append(f1_sens09, caret_conf_mat_sens09[[models]][[4]][7])
+  
+  # CARET CONF MATRIX - youden optimized ----
+  caret_conf_mat_youden[[models]] <-  caret::confusionMatrix(predictions_loop[[models]]$.pred_class_youden, 
+                                                 predictions_loop[[models]]$o_mortality, 
+                                                 positive = "died")
+  # print(caret_conf_mat_youden[[models]])
+  accuracies_youden <- append(accuracies_youden, caret_conf_mat_youden[[models]]$overall[[1]])
+  sensitiv_youden <- append(sensitiv_youden, caret_conf_mat_youden[[models]][[4]][1])
+  specific_youden <- append(specific_youden, caret_conf_mat_youden[[models]][[4]][2])
+  ppv_youden <- append(ppv_youden, caret_conf_mat_youden[[models]][[4]][3])
+  npv_youden <- append(npv_youden, caret_conf_mat_youden[[models]][[4]][4])
+  precision_youden <- append(precision_youden, caret_conf_mat_youden[[models]][[4]][5])
+  recall_youden <- append(recall_youden, caret_conf_mat_youden[[models]][[4]][6])
+  f1_youden <- append(f1_youden, caret_conf_mat_youden[[models]][[4]][7])
+  
+  # TEST ROC CURVE
+  title <- paste(wflow_id, " on Test set", sep = "")
+  roc_plot_test <- predictions_loop[[models]] %>% 
+      ## factor order usually alphabetically! (acs < control)
+    mutate(o_mortality = factor(o_mortality, levels=c("survived", "died"))) %>%  
+    roc_curve(o_mortality, .pred_died, event_level="second") %>%
+    ggplot(aes(1 - specificity, sensitivity)) +
+    geom_line(linewidth = 1.5, color = ggthemes_data$few$colors$Dark[2,2][[1]]) +
+    geom_abline(lty = 2, color = ggthemes_data$few$colors$Dark[1,2][[1]], size = 1.2, alpha=0.5) +
+    geom_path(show.legend = FALSE) +
+    coord_equal() +
+    labs(title = title ) +
+    annotate("text", x = 0.4, y=0.2, label = paste(wflow_id,"-AUC=", round(aucs[models],3), sep = ""), size=3, hjust = 0) +
+    annotate("text", x = 0.4, y=0.15, label = paste(wflow_id, "-", ci.auc.texts[models], sep = ""), size=3, hjust = 0) +    
+    ggthemes::theme_few()+
+    ggthemes::scale_color_few()+
+    theme(plot.subtitle = element_text(size = 7, color = "black"))
+  print(roc_plot_test)
+  
+  if(save.FILE == TRUE) {
+    filename_plot_ROC_wflow_id <- paste0("./output/plots/ROC/", Sys.Date(), "_ROC_", wflow_id, ".svg")
+    ggsave(filename = filename_plot_ROC_wflow_id, plot = roc_plot_test, 
+         width = 12, height = 12, 
+         units = "in"  # default
+    )
+  }
+  
+  ## factor order usually alphabetically! (acs < control)
+  predictions_loop[[models]] <- predictions_loop[[models]] %>% 
+    mutate(.pred_class = factor(.pred_class, levels=c("survived", "died")),
+           o_mortality = factor(o_mortality, levels=c("survived", "died")),
+           )
+
+  calibration_plot <- gbm::calibrate.plot(y = predictions_loop[[models]]$o_mortality, p = predictions_loop[[models]][[".pred_died"]], 
+                    main=paste(wflow_id, "-Calibration Plot", sep=""), 
+                    line.par = list(col = "black"), shade.col="grey", xlim=c(0,0.6))
+  
+  if(save.FILE == TRUE) {
+    filename_plot_calibration_wflow_id <- paste0("./output/plots/calibration_plots/", Sys.Date(), "_calibration_", wflow_id, ".svg")
+    ggsave(filename = filename_plot_calibration_wflow_id, plot = roc_plot_test, 
+         width = 12, height = 12, 
+         units = "in"  # default
+    )
+  }
+  
+}
+```
+
+
+## Model summary
+
+Summary stats of the subsequent models are shown in the following table. 
+
+```{r loop-sum-table}
+performance.summary.table <- tibble(
+  model = race_results$wflow_id,
+  AUC = round(aucs,2), 
+  accuracy = round(accuracies,2),
+  sensitivity = round(sensitiv,2),
+  specificity = round(specific,2),
+  ppv = round(ppv,2),
+  npv= round(npv,2), 
+  precision= round(precision,2), 
+  recall= round(recall,2), 
+  f1.score =round(f1,2)
+  )
+
+kableExtra::kable(performance.summary.table, digits = 3, caption = "Summary statistics of ML-models with original model threshold",) %>% 
+  kable_styling(font_size=12)
+
+if(save.FILE==TRUE) {
+  filename.df.xlsx <- paste0("./output/performance_summary_df/", format(Sys.Date(), "%Y%m%d"), "_performance_summary_table_original_cutoff.xlsx")
+  filename.df.rds <- paste0("./output/performance_summary_df/", format(Sys.Date(), "%Y%m%d"), "_performance_summary_table.rds")
+  openxlsx::write.xlsx(performance.summary.table, file = filename.df.xlsx, overwrite = TRUE)
+  saveRDS(performance.summary.table, file = filename.df.rds)
+}
+
+performance.summary.table.sens09 <- tibble(
+  model = race_results$wflow_id,
+  AUC = round(aucs,2), 
+  accuracy = round(accuracies_sens09,2),
+  sensitivity = round(sensitiv_sens09, 2),
+  specificity = round(specific_sens09, 2),
+  ppv = round(ppv_sens09,2),
+  npv= round(npv_sens09,2), 
+  precision= round(precision_sens09,2), 
+  recall= round(recall_sens09,2), 
+  f1.score =round(f1_sens09,2)
+  )
+
+kableExtra::kable(performance.summary.table.sens09, digits = 3, caption = "Summary statistics of ML-models with threshold at Sensitivity = 0.9",) %>% 
+  kable_styling(font_size=12)
+```
+
+
