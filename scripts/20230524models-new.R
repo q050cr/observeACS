@@ -79,7 +79,7 @@ dat_train <- training(dat_split)
 dat_test <- testing(dat_split)
 
 folds <- 
-  vfold_cv(dat_train, strata = o_mortality, v = 10)
+  vfold_cv(dat_train, strata = o_mortality, v = 5)
 
 ###
 ## recipe -------------------------------------------------
@@ -295,38 +295,38 @@ grid_RF <- rand_forest_ranger_spec %>%   # 2 hyperparams
   extract_parameter_set_dials() %>% 
   # data dependent
   update(mtry = mtry(range = c(1, ncol(dat_train))) ) %>% 
-  grid_latin_hypercube(size=100) 
+  grid_latin_hypercube(size=300) 
 
 grid_XGB <- boost_tree_xgboost_spec %>%   # 2 hyperparams
   extract_parameter_set_dials() %>% 
   # data dependent
   update(mtry = mtry(range = c(1, ncol(dat_train))) ) %>% 
-  grid_latin_hypercube(size=150) 
+  grid_latin_hypercube(size=300) 
 
 grid_KNN <- nearest_neighbor_kknn_spec %>%  # 3 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=100)
+  grid_latin_hypercube(size=300)
 
 grid_SVM_radial <- svm_rbf_kernlab_spec %>%   # 3 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=100)
+  grid_latin_hypercube(size=300)
 
 grid_SVM_poly <- svm_poly_kernlab_spec %>%   # 4 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=100)
+  grid_latin_hypercube(size=300)
 
 grid_SVM_linear <- svm_linear_kernlab_spec %>%   # 2 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=100)
+  grid_latin_hypercube(size=300)
 
 grid_neural_network <- mlp_nnet_spec %>%   # 3 hyperparams
   extract_parameter_set_dials() %>% 
   update(epochs = epochs() %>% range_set(c(10, 100))) %>%   # epochs()  Range: [10, 1000] (default)
-  grid_latin_hypercube(size=100)
+  grid_latin_hypercube(size=300)
 
 grid_full_quad_logistic_reg <- logistic_reg_glmnet_spec %>%  # 2 hyperparams
   extract_parameter_set_dials() %>% 
-  grid_latin_hypercube(size=100)
+  grid_latin_hypercube(size=300)
 
 ## supply grid to workflow options
 # https://github.com/tidymodels/workflowsets/issues/37
@@ -435,13 +435,13 @@ if(run_model == TRUE) {
 ## SAVE RACE RESULTS -----------------------------------------
 
 if (imputation_knn == TRUE & logged_numeric == TRUE) {
-  filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results_knnImput_logged_num.rds")
+  filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results_knnImput_logged_num_k5.rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 } else if (imputation_knn == TRUE & logged_numeric == FALSE) {
-  filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results_knnImput.rds")
+  filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results_knnImput_k5.rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 } else {
-  filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results.rds")
+  filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results_k5.rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 }
 
