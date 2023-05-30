@@ -39,10 +39,10 @@ if (!grepl("mingw32", R.Version()$platform)) {
   registerDoParallel(cl)
 }
 
-run_model <- FALSE
+run_model <- TRUE
 tune_grid_eval <- FALSE  # otherwise only racing methods will be used for hyperpar tuning
 imputation_knn <- TRUE
-logged_numeric <- TRUE
+logged_numeric <- FALSE  # we did YeoJohnson step ( power transformation method used to stabilize variance and make data more closely follow a normal distribution)
 
 
 # load data ---------------------------------------------------------------
@@ -97,7 +97,7 @@ normalized_rec <-
   step_impute_mean(all_numeric_predictors()) %>% 
   step_impute_mode(all_nominal_predictors(), -o_mortality) %>% 
   step_corr(all_numeric_predictors(), threshold = 0.8) %>% 
-  step_YeoJohnson() %>% 
+  step_YeoJohnson(all_numeric_predictors()) %>% 
   step_normalize(all_numeric_predictors()) %>%  
   step_dummy(all_nominal_predictors(),-o_mortality)
 
@@ -117,7 +117,7 @@ if (imputation_knn == TRUE) {
                     impute_with = imp_vars(age, sex_f1_m0, t0_hstnt_value, ekg_sinus_normal, t0_krea_value, t0_crp_value)) %>% 
 
     step_corr(all_numeric_predictors(), threshold = 0.8) %>% 
-    step_YeoJohnson() %>% 
+    step_YeoJohnson(all_numeric_predictors()) %>% 
     step_normalize(all_numeric_predictors()) %>%  
     step_dummy(all_nominal_predictors(),-o_mortality)
 }
@@ -249,7 +249,8 @@ normalized <-
       SVM_radial = svm_rbf_kernlab_spec, 
       SVM_poly = svm_poly_kernlab_spec, 
       SVM_linear = svm_linear_kernlab_spec,
-      neural_network = mlp_nnet_spec
+      neural_network = mlp_nnet_spec,
+      logistic_reg_norm = logistic_reg_glmnet_spec
     )
   )
 
@@ -260,7 +261,8 @@ simple <-
     models = list(
       #naive_bayes = naive_Bayes_naivebayes_spec,    ## ERROR when tuning "Error in pkgs$pkg[[1]] : subscript out of bounds"
       RF = rand_forest_ranger_spec,
-      XGB = boost_tree_xgboost_spec
+      XGB = boost_tree_xgboost_spec,
+      logistic_reg_simple = logistic_reg_glmnet_spec
     )
   )
 
@@ -337,7 +339,8 @@ all_workflows <- all_workflows %>%
   option_add(grid = grid_SVM_linear, id = "SVM_linear") %>% 
   option_add(grid = grid_neural_network, id = "neural_network") %>% 
   option_add(grid = grid_full_quad_logistic_reg, id = "full_quad_logistic_reg") %>% 
-  option_add(grid = grid_KNN, id = "full_quad_KNN")   # same hyperparams
+  option_add(grid = grid_full_quad_logistic_reg, id = "logistic_reg_simple") %>%   # same hyperparams
+  option_add(grid = grid_full_quad_logistic_reg, id = "logistic_reg_norm")
 
 ###
 ## tune-grid-workflows -----------------------------------------
@@ -424,8 +427,8 @@ if(run_model == TRUE) {
   time.diff.race <- time2-time1
 } else{
   ## LOAD RACE? ----
-  race_results <- readRDS(file = "./output/tuning-results/2023-05-30_tune_race_results_knnImput_logged_num.rds")
-  #race_results <- readRDS(file = "./output/tuning-results/2023-05-28_tune_race_results_knnImput.rds")
+  #race_results <- readRDS(file = "./output/tuning-results/2023-05-30_tune_race_results_knnImput_logged_num.rds")
+  race_results <- readRDS(file = "./output/tuning-results/2023-05-30_tune_race_results_knnImput1.rds")
 }
 
 
