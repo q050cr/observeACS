@@ -27,6 +27,9 @@ pMiss <- function(x){sum(is.na(x))/length(x)*100}
 # import data -------------------------------------------------------------
 dat.sav <- haven::read_sav("./data/Observe_ML_Brahms.sav")
 
+#2023-05: mastertabelle musti
+# dat.sav <- readxl::read_excel(path = "./data/202305master/230308_Observe_Zone_Mastertabelle.xlsx")
+
 # rename some cols with dplyr -----------------------------------------------
 dat.sav <- dat.sav %>% 
   dplyr::rename(
