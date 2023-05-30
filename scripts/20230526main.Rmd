@@ -12,7 +12,7 @@ knit: (function(input, ...) {
     rmarkdown::render(
       input,
       output_file = paste0(  
-        Sys.Date(), '-',  "observeACS_analysis", '.html'
+        Sys.Date(), '-',  "observeACS_analysis_knn_logged", '.html'
       ),
       output_dir = "./output-markdown",  
       envir = globalenv(), 
@@ -28,7 +28,7 @@ output:
 ---
 
 
-```{r setup, include=FALSE, cache=TRUE}
+```{r setup, include=FALSE, cache=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 #knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 save.FILE <- TRUE
