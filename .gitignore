@@ -18,6 +18,7 @@ output-markdown/
 paper-backing/
 plots/
 reports/
+scripts/bestageing/
 scripts/old/
 scripts_py/
 shinyapp/
