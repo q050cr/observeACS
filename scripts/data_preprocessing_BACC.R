@@ -382,7 +382,7 @@ outcomes_cat <- c("aufnahme_krankenhaus","mortality_30d","mortality_90d","o_mort
                   "o_reinfarction","o_recoro","o_re_ptca", "hk_within_30_days")
 scores_cat <- c("grace_low0int1high2","KHK__Killip_Class")
 
-change2numericBACC <- c("t0_ntbnp_value", "t0_tsh_value", "t0_dd_value", "delta_c_first_tnt_relativ", "o_time_re_ptca",
+change2numericBACC <- c("t0_hstnt_value", "t0_ntbnp_value", "t0_tsh_value", "t0_dd_value", "delta_c_first_tnt_relativ", "o_time_re_ptca",
                     "o_time_recoro", "o_time_reinfarction", "o_time_cabg", "o_time_stroke", "o_time_mortality",
                     "t0_thrombo_value", "t0_hb_value", "t0_ck_value", "t0_gluc_value", 
                     "t0_na_value", "t0_hst_value", "t0_leuko_value","t0_crp_value", "t0_krea_value",
@@ -426,8 +426,8 @@ model_data1$symptombeginn
 pMiss_bacc.oz <- apply(dat.bacc.oz,2,pMiss)
 
 # SAVE BACC
-#saveRDS(object = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.rds"))
-#openxlsx::write.xlsx(x = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.xlsx"))
+saveRDS(object = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.rds"))
+openxlsx::write.xlsx(x = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.xlsx"))
 
 
 # COMBINE BACC and UKHD DATA ------------------------------------------
@@ -447,8 +447,8 @@ common_columns <- intersect(colnames(model_data1_ukhd), colnames(dat.bacc.oz))
 # Perform row binding with common columns only
 combined_dataset <- rbind(model_data1_ukhd[, common_columns], dat.bacc.oz[, common_columns])
 
-#saveRDS(object = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.rds"))
-#openxlsx::write.xlsx(x = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.xlsx"))
+saveRDS(object = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.rds"))
+openxlsx::write.xlsx(x = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.xlsx"))
 
 
 # sanity trop check

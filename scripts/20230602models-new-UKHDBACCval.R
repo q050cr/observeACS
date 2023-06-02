@@ -311,39 +311,39 @@ all_workflows <-
 grid_RF <- rand_forest_ranger_spec %>%   # 2 hyperparams
   extract_parameter_set_dials() %>% 
   # data dependent
-  update(mtry = mtry(range = c(1, ncol(dat_train))) ) %>% 
-  grid_latin_hypercube(size=200) 
+  update(mtry = mtry(range = c(1, ncol(dat_train)-2)) ) %>%   # ids removed
+  grid_latin_hypercube(size=10) 
 
 grid_XGB <- boost_tree_xgboost_spec %>%   # 2 hyperparams
   extract_parameter_set_dials() %>% 
   # data dependent
-  update(mtry = mtry(range = c(1, ncol(dat_train))) ) %>% 
-  grid_latin_hypercube(size=300) 
+  update(mtry = mtry(range = c(1, ncol(dat_train)-2)) ) %>% 
+  grid_latin_hypercube(size=200) 
 
 grid_KNN <- nearest_neighbor_kknn_spec %>%  # 3 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=200)
+  grid_latin_hypercube(size=150)
 
 grid_SVM_radial <- svm_rbf_kernlab_spec %>%   # 3 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=200)
+  grid_latin_hypercube(size=150)
 
 grid_SVM_poly <- svm_poly_kernlab_spec %>%   # 4 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=250)
+  grid_latin_hypercube(size=200)
 
 grid_SVM_linear <- svm_linear_kernlab_spec %>%   # 2 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=200)
+  grid_latin_hypercube(size=150)
 
 grid_neural_network <- mlp_nnet_spec %>%   # 3 hyperparams
   extract_parameter_set_dials() %>% 
   update(epochs = epochs() %>% range_set(c(10, 100))) %>%   # epochs()  Range: [10, 1000] (default)
-  grid_latin_hypercube(size=200)
+  grid_latin_hypercube(size=150)
 
 grid_full_quad_logistic_reg <- logistic_reg_glmnet_spec %>%  # 2 hyperparams
   extract_parameter_set_dials() %>% 
-  grid_latin_hypercube(size=200)
+  grid_latin_hypercube(size=150)
 
 ## supply grid to workflow options
 # https://github.com/tidymodels/workflowsets/issues/37
