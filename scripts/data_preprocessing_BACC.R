@@ -5,6 +5,7 @@ library(readxl)
 library(janitor)
 library(dplyr)
 library(tidyr)
+library(glue)
 library(stringr)
 library(purrr)
 library(ggplot2)
@@ -337,3 +338,7 @@ dat.bacc.oz <- dat.bacc.oz %>%
     t0_hkt_value = NA,  # no apparent corresponding column in df2
     t0_quick_value = NA,  # no apparent corresponding column in df2
   )
+
+saveRDS(object = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.rds"))
+
+glue("{Sys.Date()}-")
