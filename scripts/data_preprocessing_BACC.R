@@ -315,12 +315,12 @@ dat.bacc.oz <- dat.bacc.oz %>%
     ekg_st_senkung = st_depression_0h_n1,  # assuming 'st_depression_0h_n1' corresponds to 'ekg_st_senkung' in df1
     ekg_schrittmacher = ecg_vensms,  # assuming 'ecg_at' corresponds to 'ekg_schrittmacher' in df1
     # labs
-    t0_hstnt_value = absolute_delta_c, 
+    t0_hstnt_value = t0_hstnt_value, 
     t0_ntbnp_value = nt_probnp_bacc,  # assuming 'nt_probnp_bacc' corresponds to 't0_ntbnp_value' in df1
     t0_krea_value = t0_krea_value, 
     t0_crp_value = crp, 
     t0_leuko_value = leukocytes, 
-    t0_hst_value = t0_hstnt_value,  # assuming 't0_hstnt_value' corresponds to 't0_hst_value' in df1
+    #t0_hst_value  not included, 
     t0_na_value = natrium, 
     t0_gluc_value = glucose, 
     t0_ck_value = ck_0h, 
@@ -449,4 +449,9 @@ combined_dataset <- rbind(model_data1_ukhd[, common_columns], dat.bacc.oz[, comm
 
 #saveRDS(object = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.rds"))
 #openxlsx::write.xlsx(x = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.xlsx"))
+
+
+# sanity trop check
+sanity_check <- dat.bacc.oz %>% 
+  left_join(rapid_orig1 %>% select(external_id, hstnt_0h), by = c("rapID"="external_id"))
 
