@@ -47,7 +47,7 @@ logged_numeric <- FALSE  # we did YeoJohnson step ( power transformation method 
 # cross-validation
 v <- 10
 # mixed cohort (both UKHD & BACC in train/test)
-mixed_cohort <- TRUE
+mixed_cohort <- FALSE
 if(mixed_cohort==TRUE){
   mixed_cohort_naming <- "traintestmixed"
 }else{
@@ -443,22 +443,26 @@ if(run_model == TRUE) {
   time2 <- Sys.time()
   time.diff.race <- time2-time1
 } else{
-  ## LOAD RACE? ----
-  #race_results <- readRDS(file = "./output/tuning-results/2023-05-30_tune_race_results_knnImput_logged_num.rds")
-  race_results <- readRDS(file = "./output/tuning-results_UKHDBACC/cluster/2023-06-02_tune_race_results_knnImput_v_10_cluster_large_grid.rds")
+  if(mixed_cohort==TRUE){
+    ## LOAD RACE? ----
+    race_results <- readRDS(file = "./output/tuning-results-UKHDBACC/cluster/2023-06-02_tune_race_results_knnImput_v_10_traintestmixed.rds")
+  }else{
+    race_results <- readRDS(file = "./output/tuning-results-UKHDBACC/cluster/2023-06-02_tune_race_results_knnImput_v_10_trainUKHDtestBACC.rds")
+  }
+  
 }
 
 
 ## SAVE RACE RESULTS -----------------------------------------
 
 if (run_model == TRUE & imputation_knn == TRUE & logged_numeric == TRUE) {
-  filename_tune_race_results <- paste0("./output/tuning-results_UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_knnImput_logged_num_v_", v, "_", mixed_cohort_naming, ".rds")
+  filename_tune_race_results <- paste0("./output/tuning-results-UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_knnImput_logged_num_v_", v, "_", mixed_cohort_naming, ".rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 } else if (run_model == TRUE & imputation_knn == TRUE & logged_numeric == FALSE) {
-  filename_tune_race_results <- paste0("./output/tuning-results_UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_knnImput_v_", v,"_", mixed_cohort_naming, ".rds")
+  filename_tune_race_results <- paste0("./output/tuning-results-UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_knnImput_v_", v,"_", mixed_cohort_naming, ".rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 } else if(run_model == TRUE) {
-  filename_tune_race_results <- paste0("./output/tuning-results_UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_v_", v,"_", mixed_cohort_naming, ".rds")
+  filename_tune_race_results <- paste0("./output/tuning-results-UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_v_", v,"_", mixed_cohort_naming, ".rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 }
 
