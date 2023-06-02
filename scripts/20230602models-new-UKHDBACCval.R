@@ -84,7 +84,7 @@ folds <-
   vfold_cv(dat_train, strata = o_mortality, v = v)
 
 ###
-## recipe -------------------------------------------------
+## Recipes -------------------------------------------------
 # A
 normalized_rec <- 
   recipe(o_mortality ~ ., data = dat_train) %>%
@@ -198,7 +198,7 @@ prepped <- poly_rec %>% prep(strings_as_factors = FALSE)  # otherwise ID columns
 test <- bake(prepped, new_data = dat_test)
 
 ###
-## specs-parsnip ----------------------------------------------------------
+## SPECS-parsnip ----------------------------------------------------------
 #parsnip::set_dependency("kknn", "glmnet", "ranger", "naivebayes") #, "kernlab", "xgboost", "nnet")
 
 nearest_neighbor_kknn_spec <-
@@ -256,7 +256,7 @@ mlp_nnet_spec <-
   set_mode('classification')
 
 ##
-## workflow set --------------------------------------------------------------
+## Workflow Set --------------------------------------------------------------
 ## A
 normalized <- 
   workflow_set(   # IDs are generated {name of preproc} + {name of model}
@@ -303,7 +303,7 @@ all_workflows <-
   mutate(wflow_id = gsub("(simple_)|(normalized_)", "", wflow_id))
 
 ###
-## define-grids --------------------------------------------------------------
+## Grids --------------------------------------------------------------
 ###
 # need to finalize mtry - data dependent (unknown values - how many predictors?)
 ## data dependent: mtry(), sample_size(), num_terms(), num_comp()
@@ -312,38 +312,38 @@ grid_RF <- rand_forest_ranger_spec %>%   # 2 hyperparams
   extract_parameter_set_dials() %>% 
   # data dependent
   update(mtry = mtry(range = c(1, ncol(dat_train)-2)) ) %>%   # ids removed
-  grid_latin_hypercube(size=10) 
+  grid_latin_hypercube(size=200) 
 
 grid_XGB <- boost_tree_xgboost_spec %>%   # 2 hyperparams
   extract_parameter_set_dials() %>% 
   # data dependent
   update(mtry = mtry(range = c(1, ncol(dat_train)-2)) ) %>% 
-  grid_latin_hypercube(size=200) 
+  grid_latin_hypercube(size=250) 
 
 grid_KNN <- nearest_neighbor_kknn_spec %>%  # 3 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=150)
+  grid_latin_hypercube(size=200)
 
 grid_SVM_radial <- svm_rbf_kernlab_spec %>%   # 3 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=150)
+  grid_latin_hypercube(size=200)
 
 grid_SVM_poly <- svm_poly_kernlab_spec %>%   # 4 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=200)
+  grid_latin_hypercube(size=250)
 
 grid_SVM_linear <- svm_linear_kernlab_spec %>%   # 2 hyperparams
   extract_parameter_set_dials() %>%
-  grid_latin_hypercube(size=150)
+  grid_latin_hypercube(size=200)
 
 grid_neural_network <- mlp_nnet_spec %>%   # 3 hyperparams
   extract_parameter_set_dials() %>% 
   update(epochs = epochs() %>% range_set(c(10, 100))) %>%   # epochs()  Range: [10, 1000] (default)
-  grid_latin_hypercube(size=150)
+  grid_latin_hypercube(size=200)
 
 grid_full_quad_logistic_reg <- logistic_reg_glmnet_spec %>%  # 2 hyperparams
   extract_parameter_set_dials() %>% 
-  grid_latin_hypercube(size=150)
+  grid_latin_hypercube(size=200)
 
 ## supply grid to workflow options
 # https://github.com/tidymodels/workflowsets/issues/37
@@ -360,7 +360,7 @@ all_workflows <- all_workflows %>%
   option_add(grid = grid_full_quad_logistic_reg, id = "logistic_reg_norm")
 
 ###
-## tune-grid-workflows -----------------------------------------
+## Tune-grid-workflows -----------------------------------------
 ###
 
 if (tune_grid_eval == TRUE) {   # otherwise only racing methods will be used for hyperpar tuning
