@@ -82,7 +82,7 @@ folds <-
   vfold_cv(dat_train, strata = o_mortality, v = 5)
 
 ###
-## recipe -------------------------------------------------
+## Recipes -------------------------------------------------
 # A
 normalized_rec <- 
   recipe(o_mortality ~ ., data = dat_train) %>%
