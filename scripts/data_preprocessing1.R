@@ -137,7 +137,7 @@ dat.observe <- dat.observe %>%
   mutate(across(all_of(catVars), as.character)) %>% 
   mutate(across(all_of(outcomes_cat), as.factor)) %>% 
   mutate(across(all_of(demographics_cat), as.factor)) %>% 
-  mutate(across(all_of(ecg_cat), as.factor)) -> test
+  mutate(across(all_of(ecg_cat), as.factor))
 
 # numeric cols
 numcols <- unlist(lapply(dat.observe, is.numeric))
@@ -200,11 +200,51 @@ dat %>%
   select_if(function(col) sum(!is.na(col))/length(col)*100 > 50) -> dat
 
 
-# SAVE
+# SAVE (then we create modelling data)
 
 saveRDS(object = dat, file = paste0("./output/Rdata/cleaned-dat/", Sys.Date(), "-dat_cleaned_observe2023.rds"))
 
 
-rm(list=c("dat.sav", "index", "numcols", "pMiss_observe"))
+# MODEL DATA UKHD ----------------------------------------------
+model_data1 <- dat %>% 
+  select(
+    # ID
+    rapID,
+    # outcome
+    o_mortality, 
+    # predictors
+    c("age", "sex_f1_m0", "symptombeginn", "grace_score",
+      "h_diabetes", "h_hypertonie", "h_cholesterin", "aktiver_raucher", 
+      "h_familienana", "h_khk", "h_lvdys_grad", "vit_rr_syst", "vit_herzfrequenz", "vit_temperatur", 
+      "vit_saettigung", "vit_atemfrequenz", "ekg_sinus_normal", "ekg_st_senkung", "ekg_schrittmacher", 
+      # labs
+      "t0_hstnt_value", "delta_t_first", "t0_ntbnp_value", 
+      "t0_krea_value", "t0_crp_value", "t0_leuko_value", "t0_hst_value", 
+      "t0_na_value", "t0_k_value", "t0_gluc_value", "t0_ck_value", 
+      "t0_ldh_value", "t0_got_value", "t0_gpt_value", "t0_hb_value", 
+      "t0_hkt_value", "t0_thrombo_value", "t0_quick_value", "t0_inr_value"
+    )
+  )
 
+fctrs <- c("o_mortality", "sex_f1_m0", "symptombeginn", 
+           "h_diabetes", "h_hypertonie", "h_cholesterin", "aktiver_raucher", 
+           "h_familienana", "h_khk", "h_lvdys_grad",
+           "ekg_sinus_normal", "ekg_st_senkung", "ekg_schrittmacher")
+
+model_data1 <- model_data1 %>% 
+  mutate(across(all_of(fctrs), as.factor)) %>% 
+  mutate(o_mortality = factor(o_mortality, labels = c("survived", "died")))
+
+pMiss <- function(x){sum(is.na(x))/length(x)*100}
+pMiss_observe <- apply(model_data1,2,pMiss)
+index <- pMiss_observe > 50  # no column missing more than 50% (ntproBNP > 40%, that is why threshold was set higher)
+# drop cols with more than 40% missings
+
+## check implausible data ----
+model_data1 <- model_data1[ , !index] %>% 
+  mutate(vit_saettigung = ifelse(vit_saettigung > 80, vit_saettigung, NaN),
+         vit_atemfrequenz = ifelse(vit_atemfrequenz<50, vit_atemfrequenz, NaN),
+         t0_k_value = ifelse(t0_k_value <7.55,t0_k_value, NaN ))
+
+saveRDS(object = model_data1, file = paste0("./output/Rdata/cleaned-dat/", Sys.Date(), "-model_data1_observe2023.rds"))
 
