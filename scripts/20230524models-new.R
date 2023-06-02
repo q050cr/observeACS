@@ -180,6 +180,9 @@ if (imputation_knn == TRUE) {
     step_dummy(all_nominal_predictors(),-o_mortality)
 }
 
+prepped <- simple_rec %>% prep()
+test <- bake(prepped, new_data = dat_test)
+
 ###
 ## specs-parsnip ----------------------------------------------------------
 #parsnip::set_dependency("kknn", "glmnet", "ranger", "naivebayes") #, "kernlab", "xgboost", "nnet")
