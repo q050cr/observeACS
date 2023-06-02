@@ -14,10 +14,12 @@ library(tableone)
 library(Hmisc)
 library(RColorBrewer)
 
+pMiss <- function(x){sum(is.na(x))/length(x)*100}
+base::source("./scripts/data_preprocessing1.R")
 
 # load datat
 # rapid_orig <- clean_names(readxl::read_excel("../data-musti/Rapid_Rule_Out_Komplett.xlsx"))
-rapid_orig1 <- clean_names(readxl::read_excel("../predictACS-CAD123/data-gianni/BACC/BACC_Database 1-2303-nopass.xlsx")) %>% 
+rapid_orig1 <- clean_names(readxl::read_excel("./data/BACC/BACC_Database 1-2303-nopass.xlsx")) %>% 
   filter(stemi != 1)
 
 # we have to calculate the OZ
@@ -297,6 +299,7 @@ dat.bacc.oz <- dat.bacc.oz %>%
                                      ecg_at == 0, 1, 0)
          ) %>% 
   rename(
+    rapID = rap_id,
     o_mortality = qc_fu_death,  
     grace_score = grace_score, 
     h_diabetes = h_diabetes,
@@ -324,21 +327,126 @@ dat.bacc.oz <- dat.bacc.oz %>%
     t0_hb_value = hemoglobine, 
     t0_thrombo_value = thrombocytes, 
     t0_inr_value = inr
-  ) %>% 
-  # missing values
-  mutate(
-    vit_temperatur = NA,  # no apparent corresponding column in df2
-    vit_saettigung = NA,  # no apparent corresponding column in df2
-    vit_atemfrequenz = NA,  # no apparent corresponding column in df2
-    delta_t_first = NA,  # no apparent corresponding column in df2
-    t0_k_value = NA,  # no apparent corresponding column in df2
-    t0_ldh_value = NA,  # no apparent corresponding column in df2
-    t0_got_value = NA,  # no apparent corresponding column in df2
-    t0_gpt_value = NA,  # no apparent corresponding column in df2
-    t0_hkt_value = NA,  # no apparent corresponding column in df2
-    t0_quick_value = NA,  # no apparent corresponding column in df2
-  )
+  )# %>% 
+  # # missing values
+  # mutate(
+  #   vit_temperatur = NA,  # no apparent corresponding column in df2
+  #   vit_saettigung = NA,  # no apparent corresponding column in df2
+  #   vit_atemfrequenz = NA,  # no apparent corresponding column in df2
+  #   delta_t_first = NA,  # no apparent corresponding column in df2
+  #   t0_k_value = NA,  # no apparent corresponding column in df2
+  #   t0_ldh_value = NA,  # no apparent corresponding column in df2
+  #   t0_got_value = NA,  # no apparent corresponding column in df2
+  #   t0_gpt_value = NA,  # no apparent corresponding column in df2
+  #   t0_hkt_value = NA,  # no apparent corresponding column in df2
+  #   t0_quick_value = NA,  # no apparent corresponding column in df2
+  # )
 
-saveRDS(object = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.rds"))
+# further cleaning -------------------
 
-glue("{Sys.Date()}-")
+
+# convert to factor
+catVars <- c(
+  # demographics & history category
+  "sex_f1_m0", 
+  "symptombeginn","symptomtyp",
+  "crowding_low0_norm1_high2","h_diabetes","h_hypertonie","h_cholesterin",
+  "aktiver_raucher","h_familienana","h_infarkt","h_cabg","h_khk",
+  "h_vessel_disease","h_pci","h_lvdysfunktion","h_lvdys_grad",
+  
+  # EKG category
+  "ekg_t_negativierung","ekg_schrittmacher","ekg_atriale_tachy","ekg_block_ohne_sm",
+  "ekg_st_senkung","ekg_sinusrhythmus","ekg_sinus_normal",
+  
+  # hospitalisation category
+  "aufnahme_krankenhaus",
+  # outcome category
+  "mortality_30d","mortality_90d","o_mortality","o_stroke","o_cabg",
+  "o_reinfarction","o_recoro","o_re_ptca","hk_within_30_days",
+  # trop category 
+  "t0_hstnt_categ_num",
+  # scores
+  "grace_low0int1high2","KHK__Killip_Class"
+)
+
+# dat.observe[catVars] <- lapply(dat.observe[catVars], factor) # not applied, otherwise problems later with replace_na()
+
+# create some more vectors to investigate separately
+demographics_cat <- c("sex_f1_m0", "symptombeginn","symptomtyp",
+                      "crowding_low0_norm1_high2","h_diabetes","h_hypertonie","h_cholesterin",
+                      "aktiver_raucher","h_familienana","h_infarkt","h_cabg","h_khk",
+                      "h_vessel_disease","h_pci","h_lvdysfunktion","h_lvdys_grad")
+ecg_cat <- c("ekg_t_negativierung","ekg_schrittmacher","ekg_atriale_tachy","ekg_block_ohne_sm",
+             "ekg_st_senkung","ekg_sinusrhythmus","ekg_sinus_normal")
+outcomes_cat <- c("aufnahme_krankenhaus","mortality_30d","mortality_90d","o_mortality","o_stroke","o_cabg",
+                  "o_reinfarction","o_recoro","o_re_ptca", "hk_within_30_days")
+scores_cat <- c("grace_low0int1high2","KHK__Killip_Class")
+
+change2numericBACC <- c("t0_ntbnp_value", "t0_tsh_value", "t0_dd_value", "delta_c_first_tnt_relativ", "o_time_re_ptca",
+                    "o_time_recoro", "o_time_reinfarction", "o_time_cabg", "o_time_stroke", "o_time_mortality",
+                    "t0_thrombo_value", "t0_hb_value", "t0_ck_value", "t0_gluc_value", 
+                    "t0_na_value", "t0_hst_value", "t0_leuko_value","t0_crp_value", "t0_krea_value",
+                    "vit_rr_syst", "t0_inr_value", "vit_herzfrequenz")
+
+dat.bacc.oz <- dat.bacc.oz %>% 
+  mutate(across(any_of(change2numericBACC), as.numeric)) %>% 
+  # first convert to numeric to prevent that "NA" gets a third factor
+  mutate(across(any_of(c(catVars, outcomes_cat, demographics_cat, ecg_cat)), as.numeric)) %>% 
+  mutate(across(any_of(c(catVars, outcomes_cat, demographics_cat, ecg_cat)), as.factor))
+
+fctrs <- c("o_mortality", "sex_f1_m0", "symptombeginn", 
+           "h_diabetes", "h_hypertonie", "h_cholesterin", "aktiver_raucher", 
+           "h_familienana", "h_khk", "h_lvdys_grad",
+           "ekg_sinus_normal", "ekg_st_senkung", "ekg_schrittmacher")
+
+dat.bacc.oz <- dat.bacc.oz %>% 
+  mutate(across(any_of(fctrs), as.numeric)) %>% 
+  mutate(across(any_of(fctrs), as.factor)) %>% 
+  mutate(o_mortality = factor(o_mortality, labels = c("survived", "died")))
+
+# factors must be harmonized, different levels (1,2 vs 0,1)
+str(model_data1)
+dat.bacc.oz$sex_f1_m0 <- factor(dat.bacc.oz$sex_f1_m0, labels = c(0,1))
+dat.bacc.oz$symptombeginn <- factor(dat.bacc.oz$symptombeginn, labels = c(0,1,2,3))
+dat.bacc.oz$h_diabetes <- factor(dat.bacc.oz$h_diabetes, labels = c(0,1))
+dat.bacc.oz$h_hypertonie <- factor(dat.bacc.oz$h_hypertonie, labels = c(0,1))
+dat.bacc.oz$h_cholesterin <- factor(dat.bacc.oz$h_cholesterin, labels = c(0,1))
+dat.bacc.oz$aktiver_raucher <- factor(dat.bacc.oz$aktiver_raucher, labels = c(0,1))
+dat.bacc.oz$h_familienana <- factor(dat.bacc.oz$h_familienana, labels = c(0,1))
+dat.bacc.oz$h_khk <- factor(dat.bacc.oz$h_khk, labels = c(0,1))
+
+dat.bacc.oz$ekg_st_senkung <- factor(dat.bacc.oz$ekg_st_senkung, labels = c(0,1))
+dat.bacc.oz$ekg_schrittmacher <- factor(dat.bacc.oz$ekg_schrittmacher, labels = c(0,1))
+dat.bacc.oz$ekg_sinus_normal <- factor(dat.bacc.oz$ekg_sinus_normal, labels = c(0,1))
+
+model_data1$symptombeginn
+# NAs? -----------------------------------------------------------------
+# show vals that have > 40% missing data
+
+pMiss_bacc.oz <- apply(dat.bacc.oz,2,pMiss)
+
+# SAVE BACC
+#saveRDS(object = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.rds"))
+#openxlsx::write.xlsx(x = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.xlsx"))
+
+
+# COMBINE BACC and UKHD DATA ------------------------------------------
+# Find common column names
+# Add identifier column to each dataset
+
+model_data1_ukhd <- model_data1
+model_data1_ukhd$source <- "UKHD"
+model_data1_ukhd$rapID <- paste0("UKHD_", model_data1_ukhd$rapID)
+dat.bacc.oz$source <- "BACC"
+
+# no lv-dysfunction in BACC, but reduced LVEF binary
+dat.bacc.oz$h_lvdys_grad_BINARY <- factor(dat.bacc.oz$h_lvdys_grad_BINARY, labels=c("normal", "reduced"))
+model_data1_ukhd$h_lvdys_grad_BINARY <- factor(ifelse(model_data1_ukhd$h_lvdys_grad != "good", 1, 0), labels=c("normal", "reduced"))
+common_columns <- intersect(colnames(model_data1_ukhd), colnames(dat.bacc.oz))
+
+# Perform row binding with common columns only
+combined_dataset <- rbind(model_data1_ukhd[, common_columns], dat.bacc.oz[, common_columns])
+
+#saveRDS(object = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.rds"))
+#openxlsx::write.xlsx(x = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.xlsx"))
+
