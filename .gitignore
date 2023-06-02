@@ -19,6 +19,7 @@ paper-backing/
 plots/
 reports/
 scripts/bestageing/
+scripts/debug/
 scripts/old/
 scripts_py/
 shinyapp/
