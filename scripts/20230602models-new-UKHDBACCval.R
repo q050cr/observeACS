@@ -46,6 +46,13 @@ logged_numeric <- FALSE  # we did YeoJohnson step ( power transformation method 
 
 # cross-validation
 v <- 10
+# mixed cohort (both UKHD & BACC in train/test)
+mixed_cohort <- TRUE
+if(mixed_cohort==TRUE){
+  mixed_cohort_naming <- "traintestmixed"
+}else{
+  mixed_cohort_naming <- "trainUKHDtestBACC"
+}
 
 # load data ---------------------------------------------------------------
 
@@ -62,9 +69,16 @@ set.seed(123)
 # make control first factor for all analyses ;)
 modeldat <- combined_dataset
 
-dat_split <- rsample::initial_split(modeldat, strata = o_mortality)
-dat_train <- training(dat_split)
-dat_test <- testing(dat_split)
+if(mixed_cohort == TRUE) {
+  dat_split <- rsample::initial_split(modeldat, strata = o_mortality)
+  dat_train <- training(dat_split)
+  dat_test <- testing(dat_split)
+} else{
+  dat_train <- modeldat %>% 
+    filter(source=="UKHD")
+  dat_test <- modeldat %>% 
+    filter(source=="BACC")
+}
 
 folds <- 
   vfold_cv(dat_train, strata = o_mortality, v = v)
@@ -438,13 +452,13 @@ if(run_model == TRUE) {
 ## SAVE RACE RESULTS -----------------------------------------
 
 if (run_model == TRUE & imputation_knn == TRUE & logged_numeric == TRUE) {
-  filename_tune_race_results <- paste0("./output/tuning-results_UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_knnImput_logged_num_v_", v, ".rds")
+  filename_tune_race_results <- paste0("./output/tuning-results_UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_knnImput_logged_num_v_", v, "_", mixed_cohort_naming, ".rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 } else if (run_model == TRUE & imputation_knn == TRUE & logged_numeric == FALSE) {
-  filename_tune_race_results <- paste0("./output/tuning-results_UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_knnImput_v_", v, ".rds")
+  filename_tune_race_results <- paste0("./output/tuning-results_UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_knnImput_v_", v,"_", mixed_cohort_naming, ".rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 } else if(run_model == TRUE) {
-  filename_tune_race_results <- paste0("./output/tuning-results_UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_v_", v, ".rds")
+  filename_tune_race_results <- paste0("./output/tuning-results_UKHDBACC/cluster/", Sys.Date(), "_tune_race_results_v_", v,"_", mixed_cohort_naming, ".rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 }
 
