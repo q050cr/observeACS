@@ -12,7 +12,7 @@ knit: (function(input, ...) {
     rmarkdown::render(
       input,
       output_file = paste0(  
-        Sys.Date(), '-',  "observeACS_analysis_knn", '.html'
+        Sys.Date(), '-',  "observeACS_analysis_k10_cluster_large_grid", '.html'
       ),
       output_dir = "./output-markdown",  
       envir = globalenv(), 
@@ -301,6 +301,7 @@ model_data1 <- model_data1[ , !index] %>%
 saveRDS(object = model_data1, file = paste0("./output/Rdata/cleaned-dat/", Sys.Date(), "-model_data1_observe2023.rds"))
 ```
 
+The following variables are used for modelling: `r colnames(model_data1)`.
 
 ```{r source-modelling-script, message=FALSE}
 # outsourced to "20230524models-new.R", change run_model in script to run models, otherwise tuned model is loaded
@@ -383,6 +384,7 @@ if( topmodel2_race != "KNN" &  topmodel2_race != "full_quad_KNN" ) {
 }
 ```
 
+We screened `r num_race_models` models with different hyperparameters. Now we are going to evaluate the best model from each category on the blinded test set. 
 
 ## Metrics on Test Set | All models
 
@@ -508,7 +510,7 @@ for (models in 1:nrow(race_results) ) {
   # CARET CONF MATRIX - sens optimized ----
   caret_conf_mat_sens09[[models]] <-  caret::confusionMatrix(predictions_loop[[models]]$.pred_class_sens09,                                                 predictions_loop[[models]]$o_mortality, 
                                                  positive = "died")
-  # print(caret_conf_mat_sens09[[models]])
+  print(caret_conf_mat_sens09[[models]])
   accuracies_sens09 <- append(accuracies_sens09, caret_conf_mat_sens09[[models]]$overall[[1]])
   sensitiv_sens09 <- append(sensitiv_sens09, caret_conf_mat_sens09[[models]][[4]][1])
   specific_sens09 <- append(specific_sens09, caret_conf_mat_sens09[[models]][[4]][2])
@@ -517,6 +519,8 @@ for (models in 1:nrow(race_results) ) {
   precision_sens09 <- append(precision_sens09, caret_conf_mat_sens09[[models]][[4]][5])
   recall_sens09 <- append(recall_sens09, caret_conf_mat_sens09[[models]][[4]][6])
   f1_sens09 <- append(f1_sens09, caret_conf_mat_sens09[[models]][[4]][7])
+  
+  table(predictions_loop[[models]]$.pred_class_sens09, predictions_loop[[models]]$o_mortality)
   
   # CARET CONF MATRIX - youden optimized ----
   caret_conf_mat_youden[[models]] <-  caret::confusionMatrix(predictions_loop[[models]]$.pred_class_youden, 
