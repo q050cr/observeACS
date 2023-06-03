@@ -24,6 +24,8 @@ library(lubridate)
 ## fn to calculate perc missing
 pMiss <- function(x){sum(is.na(x))/length(x)*100}
 
+save.FILE.PREPROCESS <- FALSE
+
 # import data -------------------------------------------------------------
 #dat.sav <- haven::read_sav("./data/Observe_ML_Brahms.sav")
 
@@ -202,7 +204,9 @@ dat %>%
 
 # SAVE (then we create modelling data)
 
-saveRDS(object = dat, file = paste0("./output/Rdata/cleaned-dat/", Sys.Date(), "-dat_cleaned_observe2023.rds"))
+if (save.FILE.PREPROCESS==TRUE){
+  saveRDS(object = dat, file = paste0("./output/Rdata/cleaned-dat/", Sys.Date(), "-dat_cleaned_observe2023.rds"))
+}
 
 
 # MODEL DATA UKHD ----------------------------------------------
@@ -218,8 +222,8 @@ model_data1 <- dat %>%
       "h_familienana", "h_khk", "h_lvdys_grad", "vit_rr_syst", "vit_herzfrequenz", "vit_temperatur", 
       "vit_saettigung", "vit_atemfrequenz", "ekg_sinus_normal", "ekg_st_senkung", "ekg_schrittmacher", 
       # labs
-      "t0_hstnt_value", "delta_t_first", "t0_ntbnp_value", 
-      "t0_krea_value", "t0_crp_value", "t0_leuko_value", "t0_hst_value", 
+      "t0_hstnt_value",  "t0_ntbnp_value", #"delta_t_first",
+      "t0_krea_value", "t0_ckdepi_value", "t0_crp_value", "t0_leuko_value", "t0_hst_value", 
       "t0_na_value", "t0_k_value", "t0_gluc_value", "t0_ck_value", 
       "t0_ldh_value", "t0_got_value", "t0_gpt_value", "t0_hb_value", 
       "t0_hkt_value", "t0_thrombo_value", "t0_quick_value", "t0_inr_value"
@@ -246,5 +250,8 @@ model_data1 <- model_data1[ , !index] %>%
          vit_atemfrequenz = ifelse(vit_atemfrequenz<50, vit_atemfrequenz, NaN),
          t0_k_value = ifelse(t0_k_value <7.55,t0_k_value, NaN ))
 
-saveRDS(object = model_data1, file = paste0("./output/Rdata/cleaned-dat/", Sys.Date(), "-model_data1_observe2023.rds"))
+if (save.FILE.PREPROCESS==TRUE){
+  saveRDS(object = model_data1, file = paste0("./output/Rdata/cleaned-dat/", Sys.Date(), "-model_data1_observe2023.rds"))
+}
+
 

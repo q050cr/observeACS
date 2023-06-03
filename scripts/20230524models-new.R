@@ -39,7 +39,8 @@ if (!grepl("mingw32", R.Version()$platform)) {
   registerDoParallel(cl)
 }
 
-run_model <- FALSE
+run_model <- TRUE
+save_model <- FALSE
 tune_grid_eval <- FALSE  # otherwise only racing methods will be used for hyperpar tuning
 imputation_knn <- TRUE
 logged_numeric <- FALSE  # we did YeoJohnson step ( power transformation method used to stabilize variance and make data more closely follow a normal distribution)
@@ -47,7 +48,7 @@ logged_numeric <- FALSE  # we did YeoJohnson step ( power transformation method 
 
 # load data ---------------------------------------------------------------
 
-model_data1 <- readRDS(file = "./output/Rdata/cleaned-dat/2023-05-30-model_data1_observe2023.rds")
+model_data1 <- readRDS(file = "./output/Rdata/cleaned-dat/2023-06-03-model_data1_observe2023.rds")
 
 ## log data numeric -----
 if( logged_numeric == TRUE) {
@@ -437,13 +438,13 @@ if(run_model == TRUE) {
 
 ## SAVE RACE RESULTS -----------------------------------------
 
-if (run_model == TRUE & imputation_knn == TRUE & logged_numeric == TRUE) {
+if (run_model == TRUE & save_model==TRUE & imputation_knn == TRUE & logged_numeric == TRUE) {
   filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results_knnImput_logged_num_k5.rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
-} else if (run_model == TRUE & imputation_knn == TRUE & logged_numeric == FALSE) {
+} else if (run_model == TRUE & save_model==TRUE & imputation_knn == TRUE & logged_numeric == FALSE) {
   filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results_knnImput_k5.rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
-} else if(run_model == TRUE) {
+} else if(run_model == TRUE & save_model==TRUE) {
   filename_tune_race_results <- paste0("./output/tuning-results/", Sys.Date(), "_tune_race_results_k5.rds")
   saveRDS(object = race_results, file = filename_tune_race_results)
 }

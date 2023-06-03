@@ -1,5 +1,6 @@
 ---
-title: "Observe-ACS | May, 2023"
+title: "Observe-ACS | June, 2023"
+subtitle: "Validation on BACC Cohort / mixed train/test"
 author: | 
         | christoph.reich@med.uni-heidelberg.de 
         | mustafa.yildirim@med.uni-heidelberg.de
@@ -12,9 +13,9 @@ knit: (function(input, ...) {
     rmarkdown::render(
       input,
       output_file = paste0(  
-        Sys.Date(), '-',  "observeACS_analysis_k10_cluster_large_grid", '.html'
+        Sys.Date(), '-',  "observeACS_analysis_k10_validation_mixed", '.html'
       ),
-      output_dir = "./output-markdown",  
+      output_dir = "./output-markdown/",  
       envir = globalenv(), 
       knit_root_dir = "../"
     )
@@ -176,7 +177,7 @@ autoplot(
   ggthemes::theme_few()+
   theme(legend.position = "none") -> plot_tune_race_ranking
 
-filename_plot_tune_race_ranking <- paste0("output/plots/tune_grid/", Sys.Date(), "_tune_race_ranking.svg")
+filename_plot_tune_race_ranking <- paste0("output/plots/tune_grid/", Sys.Date(), "_tune_race_ranking_v_", v,"_", mixed_cohort_naming,".svg")
 ggsave(filename = filename_plot_tune_race_ranking, plot = plot_tune_race_ranking, 
        width = 14, height = 10, 
        units = "in"  # default
@@ -195,7 +196,7 @@ if( topmodel1_race != "KNN" &  topmodel1_race != "full_quad_KNN" ) {
          subtitle = paste0("MODEL: ", stringr::str_to_upper(topmodel1_race))) +
     ggthemes::theme_few() -> plot_tune_race_hyperpars_topmodel1
   
-  filename_plot_tune_race_hyperpars_topmodel1 <- paste0("output/plots/tune_grid/", Sys.Date(), "_tune_race_hyperpars_topmodel1.svg")
+  filename_plot_tune_race_hyperpars_topmodel1 <- paste0("output/plots/tune_grid/", Sys.Date(), "_tune_race_hyperpars_topmodel1_v_", v,"_", mixed_cohort_naming,".svg")
   ggsave(filename = filename_plot_tune_race_hyperpars_topmodel1, plot = plot_tune_race_hyperpars_topmodel1, 
          width = 14, height = 10, 
          units = "in"  # default
@@ -209,7 +210,7 @@ if( topmodel2_race != "KNN" &  topmodel2_race != "full_quad_KNN" ) {
          subtitle = paste0("MODEL: ", stringr::str_to_upper(topmodel2_race))) +
     ggthemes::theme_few() -> plot_tune_race_hyperpars_topmodel2
   
-  filename_plot_tune_race_hyperpars_topmodel2 <- paste0("output/plots/tune_grid/", Sys.Date(), "_tune_race_hyperpars_topmodel2.svg")
+  filename_plot_tune_race_hyperpars_topmodel2 <- paste0("output/plots/tune_grid/", Sys.Date(), "_tune_race_hyperpars_topmodel2_v_", v,"_", mixed_cohort_naming,".svg")
   ggsave(filename = filename_plot_tune_race_hyperpars_topmodel2, plot = plot_tune_race_hyperpars_topmodel2, 
          width = 14, height = 10, 
          units = "in"  # default
@@ -282,21 +283,21 @@ for (models in 1:nrow(race_results) ) {
   
   if(save.FILE==TRUE) {
     ## 1) STORE TEST_SET_RESULTS -----------
-    testresults_save <- paste0(format(Sys.Date(), "%Y%m%d"),  "_TEST_RESULTS_", wflow_id)
+    testresults_save <- paste0(format(Sys.Date(), "%Y%m%d"),  "_TEST_RESULTS_", wflow_id, "_v_", v,"_", mixed_cohort_naming)
     filename.testresults <- paste0("./output/test_set_results/", testresults_save, ".rds")
     saveRDS(test_results[[models]], file = filename.testresults)
     
     ## 2) STORE MODEL ### ------------------
     ## VETIVER MODEL DEPLOYMENT
-    modelname <- paste0(format(Sys.Date(), "%Y%m%d"),  "_MODEL_", wflow_id)
+    modelname <- paste0(format(Sys.Date(), "%Y%m%d"),  "_MODEL_", wflow_id, "_v_", v,"_", mixed_cohort_naming)
     filename.model.vetiver <- paste0("./output/models/vetiver/", modelname, ".rds")
     filename.model.tidymodels <- paste0("./output/models/tidymodels/", modelname, ".rds")
-    v <- vetiver_model(
+    vetiver <- vetiver_model(
       model = last_fit_model, 
       model_name = modelname, 
       metadata = list(metrics = last_fit_metrics %>% select(-.config))
     )
-    saveRDS(v, file = filename.model.vetiver)
+    saveRDS(vetiver, file = filename.model.vetiver)
     saveRDS(last_fit_model, file = filename.model.tidymodels)
   }
   
@@ -343,7 +344,7 @@ for (models in 1:nrow(race_results) ) {
   # CARET CONF MATRIX - sens optimized ----
   caret_conf_mat_sens09[[models]] <-  caret::confusionMatrix(predictions_loop[[models]]$.pred_class_sens09,                                                 predictions_loop[[models]]$o_mortality, 
                                                  positive = "died")
-  print(caret_conf_mat_sens09[[models]])
+  #print(caret_conf_mat_sens09[[models]])
   accuracies_sens09 <- append(accuracies_sens09, caret_conf_mat_sens09[[models]]$overall[[1]])
   sensitiv_sens09 <- append(sensitiv_sens09, caret_conf_mat_sens09[[models]][[4]][1])
   specific_sens09 <- append(specific_sens09, caret_conf_mat_sens09[[models]][[4]][2])
@@ -389,7 +390,7 @@ for (models in 1:nrow(race_results) ) {
   print(roc_plot_test)
   
   if(save.FILE == TRUE) {
-    filename_plot_ROC_wflow_id <- paste0("./output/plots/ROC/", Sys.Date(), "_ROC_", wflow_id, ".svg")
+    filename_plot_ROC_wflow_id <- paste0("./output/plots/ROC/", Sys.Date(), "_ROC_", wflow_id, "_v_", v,"_", mixed_cohort_naming, ".svg")
     ggsave(filename = filename_plot_ROC_wflow_id, plot = roc_plot_test, 
          width = 12, height = 12, 
          units = "in"  # default
@@ -407,7 +408,8 @@ for (models in 1:nrow(race_results) ) {
                     line.par = list(col = "black"), shade.col="grey", xlim=c(0,0.6))
   
   if(save.FILE == TRUE) {
-    filename_plot_calibration_wflow_id <- paste0("./output/plots/calibration_plots/", Sys.Date(), "_calibration_", wflow_id, ".svg")
+    filename_plot_calibration_wflow_id <- paste0("./output/plots/calibration_plots/", Sys.Date(), "_calibration_", wflow_id,
+                                                  "_v_", v,"_", mixed_cohort_naming, ".svg")
     ggsave(filename = filename_plot_calibration_wflow_id, plot = roc_plot_test, 
          width = 12, height = 12, 
          units = "in"  # default
@@ -440,8 +442,10 @@ kableExtra::kable(performance.summary.table, digits = 3, caption = "Summary stat
   kable_styling(font_size=12)
 
 if(save.FILE==TRUE) {
-  filename.df.xlsx <- paste0("./output/performance_summary_df/", format(Sys.Date(), "%Y%m%d"), "_performance_summary_table_original_cutoff.xlsx")
-  filename.df.rds <- paste0("./output/performance_summary_df/", format(Sys.Date(), "%Y%m%d"), "_performance_summary_table.rds")
+  filename.df.xlsx <- paste0("./output/performance_summary_df/", format(Sys.Date(), "%Y%m%d"),
+                             "_performance_summary_table_original_cutoff_v_", v,"_", mixed_cohort_naming,".xlsx")
+  filename.df.rds <- paste0("./output/performance_summary_df/", format(Sys.Date(), "%Y%m%d"), 
+                           "_performance_summary_table_original_cutoff_v_", v,"_", mixed_cohort_naming,".rds")
   openxlsx::write.xlsx(performance.summary.table, file = filename.df.xlsx, overwrite = TRUE)
   saveRDS(performance.summary.table, file = filename.df.rds)
 }

@@ -39,7 +39,7 @@ if (!grepl("mingw32", R.Version()$platform)) {
   registerDoParallel(cl)
 }
 
-run_model <- TRUE
+run_model <- FALSE
 tune_grid_eval <- FALSE  # otherwise only racing methods will be used for hyperpar tuning
 imputation_knn <- TRUE
 logged_numeric <- FALSE  # we did YeoJohnson step ( power transformation method used to stabilize variance and make data more closely follow a normal distribution)
@@ -47,7 +47,7 @@ logged_numeric <- FALSE  # we did YeoJohnson step ( power transformation method 
 # cross-validation
 v <- 10
 # mixed cohort (both UKHD & BACC in train/test)
-mixed_cohort <- FALSE
+mixed_cohort <- TRUE
 if(mixed_cohort==TRUE){
   mixed_cohort_naming <- "traintestmixed"
 }else{
@@ -74,10 +74,9 @@ if(mixed_cohort == TRUE) {
   dat_train <- training(dat_split)
   dat_test <- testing(dat_split)
 } else{
-  dat_train <- modeldat %>% 
-    filter(source=="UKHD")
-  dat_test <- modeldat %>% 
-    filter(source=="BACC")
+  dat_split <- rsample::group_initial_split(modeldat, group = source)
+  dat_train <- training(dat_split) 
+  dat_test <- testing(dat_split)
 }
 
 folds <- 
@@ -96,7 +95,7 @@ normalized_rec <-
   #     Dummy Variables for Categorical Data
   update_role(rapID, new_role="ID") %>% 
   update_role(source, new_role="ID") %>% 
-  step_rm(t0_ntbnp_value) %>%  ## too many missings in BACC, MNAR!!
+  step_rm(t0_ntbnp_value, aktiver_raucher) %>%  ## too many missings in BACC, MNAR!!
   step_zv(all_predictors()) %>%  
   step_impute_mean(all_numeric_predictors()) %>% 
   step_impute_mode(all_nominal_predictors(), -o_mortality) %>% 
@@ -116,7 +115,7 @@ if (imputation_knn == TRUE) {
     #     Dummy Variables for Categorical Data
     update_role(rapID, new_role="ID") %>% 
     update_role(source, new_role="ID") %>% 
-    step_rm(t0_ntbnp_value) %>%  ## too many missings in BACC, MNAR!!
+    step_rm(t0_ntbnp_value, aktiver_raucher) %>%  ## too many missings in BACC, MNAR!!
     step_zv(all_predictors()) %>%  
     step_impute_mean(t0_krea_value, t0_crp_value) %>% # only one missing krea value, 4 missing crps
     step_impute_knn(all_predictors(), neighbors = 5, 
@@ -133,7 +132,7 @@ poly_rec <-
   recipe(o_mortality ~ ., data = dat_train) %>%
   update_role(rapID, new_role="ID") %>% 
   update_role(source, new_role="ID") %>% 
-  step_rm(t0_ntbnp_value) %>%  ## too many missings in BACC, MNAR!!
+  step_rm(t0_ntbnp_value, aktiver_raucher) %>%  ## too many missings in BACC, MNAR!!
   step_zv(all_predictors()) %>%  
   step_impute_mean(all_numeric_predictors()) %>% 
   step_impute_mode(all_nominal_predictors(), -o_mortality) %>% 
@@ -148,7 +147,7 @@ if (imputation_knn == TRUE) {
     recipe(o_mortality ~ ., data = dat_train) %>%
     update_role(rapID, new_role="ID") %>% 
     update_role(source, new_role="ID") %>% 
-    step_rm(t0_ntbnp_value) %>%  ## too many missings in BACC, MNAR!!
+    step_rm(t0_ntbnp_value, aktiver_raucher) %>%  ## too many missings in BACC, MNAR!!
     step_zv(all_predictors()) %>%  
     step_impute_mean(t0_krea_value, t0_crp_value) %>% # only one missing krea value, 4 missing crps
     step_impute_knn(all_predictors(), neighbors = 5, 
@@ -166,7 +165,7 @@ simple_rec <-
   recipe(o_mortality ~ ., data = dat_train) %>%
   update_role(rapID, new_role="ID") %>% 
   update_role(source, new_role="ID") %>% 
-  step_rm(t0_ntbnp_value) %>%  ## too many missings in BACC, MNAR!!
+  step_rm(t0_ntbnp_value, aktiver_raucher) %>%  ## too many missings in BACC, MNAR!!
   # ZERO VARIANCE
   step_zv(all_predictors()) %>%  
   # IMPUTE
@@ -181,7 +180,7 @@ if (imputation_knn == TRUE) {
     recipe(o_mortality ~ ., data = dat_train) %>%
     update_role(rapID, new_role="ID") %>% 
     update_role(source, new_role="ID") %>% 
-    step_rm(t0_ntbnp_value) %>%  ## too many missings in BACC, MNAR!!
+    step_rm(t0_ntbnp_value, aktiver_raucher) %>%  ## too many missings in BACC, MNAR!!
     # ZERO VARIANCE
     step_zv(all_predictors()) %>%  
     # IMPUTE

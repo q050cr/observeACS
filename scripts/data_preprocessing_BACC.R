@@ -17,6 +17,9 @@ library(RColorBrewer)
 pMiss <- function(x){sum(is.na(x))/length(x)*100}
 base::source("./scripts/data_preprocessing1.R")
 
+# update field from data_preprocessing1.R
+save.FILE.PREPROCESS <- FALSE
+
 # load datat
 # rapid_orig <- clean_names(readxl::read_excel("../data-musti/Rapid_Rule_Out_Komplett.xlsx"))
 rapid_orig1 <- clean_names(readxl::read_excel("./data/BACC/BACC_Database 1-2303-nopass.xlsx")) %>% 
@@ -429,8 +432,11 @@ dat.bacc.oz$ekg_sinus_normal <- factor(dat.bacc.oz$ekg_sinus_normal, labels = c(
 pMiss_bacc.oz <- apply(dat.bacc.oz,2,pMiss)
 
 # SAVE BACC
-#saveRDS(object = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.rds"))
-#openxlsx::write.xlsx(x = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.xlsx"))
+if (save.FILE.PREPROCESS == TRUE) {
+  saveRDS(object = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.rds"))
+  #openxlsx::write.xlsx(x = dat.bacc.oz, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-dat.bacc.oz-cleaned.xlsx"))
+}
+
 
 
 # COMBINE BACC and UKHD DATA ------------------------------------------
@@ -450,9 +456,11 @@ common_columns <- intersect(colnames(model_data1_ukhd), colnames(dat.bacc.oz))
 # Perform row binding with common columns only
 combined_dataset <- rbind(model_data1_ukhd[, common_columns], dat.bacc.oz[, common_columns])
 
-#saveRDS(object = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.rds"))
-#openxlsx::write.xlsx(x = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.xlsx"))
 
+if (save.FILE.PREPROCESS == TRUE) {
+  saveRDS(object = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.rds"))
+  #openxlsx::write.xlsx(x = combined_dataset, file = glue("./output/Rdata/cleaned-dat/{Sys.Date()}-combined_dataset_ukhd_bacc.xlsx"))
+}
 
 # sanity trop check
 sanity_check <- dat.bacc.oz %>% 
